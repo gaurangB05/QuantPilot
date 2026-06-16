@@ -89,9 +89,9 @@ export default function HeroSection() {
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-3">
               <button
                 className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold text-white rounded-xl transition-all duration-200"
-                style={{ background: "#2563EB", boxShadow: "0 2px 8px rgba(37,99,235,0.25)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#1d4ed8"; (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 4px 16px rgba(37,99,235,0.35)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#2563EB"; (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 2px 8px rgba(37,99,235,0.25)"; }}
+                style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)", boxShadow: "0 2px 10px rgba(37,99,235,0.28)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, #1D4ED8, #2563EB)"; (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 4px 18px rgba(37,99,235,0.38)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, #2563EB, #60A5FA)"; (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 2px 10px rgba(37,99,235,0.28)"; }}
               >
                 {hero.ctaPrimary}
                 <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
@@ -124,7 +124,7 @@ export default function HeroSection() {
             <motion.div variants={fadeUp} className="space-y-4">
               <div className="flex items-center gap-3">
                 <div className="flex -space-x-1.5">
-                  {["#2563EB", "#0891B2", "#059669", "#7C3AED"].map((bg, i) => (
+                  {["#2563EB", "#60A5FA", "#22C55E", "#374151"].map((bg, i) => (
                     <div key={i} className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-white"
                       style={{ background: bg }}>
                       {["R", "A", "V", "S"][i]}

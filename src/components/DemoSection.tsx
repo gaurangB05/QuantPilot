@@ -51,7 +51,7 @@ function TiltCard({ q, index, inView }: { q: Question; index: number; inView: bo
           border: "1px solid #E5E7EB",
           boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
         }}
-        whileHover={{ background: "#ffffff", borderColor: "#BFDBFE", boxShadow: "0 8px 32px rgba(37,99,235,0.1)" }}
+        whileHover={{ background: "#ffffff", borderColor: "#2563EB", boxShadow: "0 8px 32px rgba(37,99,235,0.1)" }}
         className="group relative flex flex-col gap-4 rounded-2xl p-6 h-full cursor-default"
       >
         {/* Glare */}
@@ -199,7 +199,7 @@ export default function DemoSection() {
           initial={{ opacity: 0 }} animate={inView ? { opacity: 1 } : {}}
           transition={{ duration: 0.5, delay: 0.9 }}>
           <motion.button onClick={handleRefresh}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-[#2563EB] border border-[#BFDBFE] bg-white"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-[#2563EB] border border-[#E5E7EB] bg-white"
             whileHover={{ scale: 1.03, boxShadow: "0 4px 16px rgba(37,99,235,0.12)" }}
             whileTap={{ scale: 0.97 }}>
             <RefreshIcon spinning={spinning} />

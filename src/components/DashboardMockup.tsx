@@ -67,7 +67,7 @@ export default function DashboardMockup() {
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+            <div className="w-1.5 h-1.5 rounded-full bg-[#22C55E]" />
             <span className="text-[9px] text-[#6B7280] font-medium">Live</span>
           </div>
         </div>
@@ -126,9 +126,9 @@ export default function DashboardMockup() {
                 <p className="text-[8px] text-[#9CA3AF] uppercase tracking-wide font-medium mb-2">Connected Brokers</p>
                 <div className="space-y-1.5">
                   {[
-                    { name: "Zerodha", val: "₹8.4L",  color: "#10B981" },
-                    { name: "ICICI Direct", val: "₹12.5L", color: "#10B981" },
-                    { name: "Angel One", val: "₹7.5L",  color: "#10B981" },
+                    { name: "Zerodha", val: "₹8.4L",  color: "#22C55E" },
+                    { name: "ICICI Direct", val: "₹12.5L", color: "#22C55E" },
+                    { name: "Angel One", val: "₹7.5L",  color: "#22C55E" },
                   ].map((b) => (
                     <div key={b.name} className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
@@ -164,7 +164,7 @@ export default function DashboardMockup() {
                 {[
                   { label: "Options",  pct: 45, color: "#2563EB", track: "#EFF6FF" },
                   { label: "Futures",  pct: 30, color: "#60A5FA", track: "#EFF6FF" },
-                  { label: "Equity",   pct: 25, color: "#10B981", track: "#F0FDF4" },
+                  { label: "Equity",   pct: 25, color: "#22C55E", track: "#F0FDF4" },
                 ].map((item) => (
                   <div key={item.label}>
                     <div className="flex justify-between mb-0.5">

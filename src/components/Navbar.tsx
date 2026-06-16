@@ -65,9 +65,9 @@ export default function Navbar() {
           </a>
           <a href="#signin"
             className="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-all duration-150"
-            style={{ background: "#2563EB", boxShadow: "0 1px 4px rgba(37,99,235,0.3)" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#1d4ed8"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#2563EB"; }}
+            style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)", boxShadow: "0 1px 6px rgba(37,99,235,0.28)" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "linear-gradient(135deg, #1D4ED8, #2563EB)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "linear-gradient(135deg, #2563EB, #60A5FA)"; }}
           >
             Request Access
           </a>
@@ -106,7 +106,7 @@ export default function Navbar() {
                 </a>
                 <a href="#signin" onClick={() => setMobileOpen(false)}
                   className="px-4 py-3 text-sm font-semibold text-white rounded-xl text-center"
-                  style={{ background: "#2563EB" }}>
+                  style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)" }}>
                   Request Access
                 </a>
               </div>
