@@ -296,7 +296,6 @@ export default function DemoSection() {
             <RefreshIcon spinning={spinning} />
             See other questions
           </motion.button>
-          <p className="text-[11px] text-slate-400">15 questions in the demo pool · refreshes every visit</p>
         </motion.div>
       </div>
     </motion.section>
