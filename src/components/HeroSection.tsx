@@ -3,7 +3,6 @@
 import { useState, FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import DashboardMockup from "./DashboardMockup";
-import DemoQuestions from "./DemoQuestions";
 import { siteConfig } from "@/lib/config";
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.09 } } };
@@ -206,14 +205,6 @@ export default function HeroSection() {
             className="hidden lg:flex flex-col gap-8"
           >
             <DashboardMockup />
-
-            {/* Demo Questions section */}
-            <div>
-              <p className="text-sm font-semibold text-slate-500 mb-4 text-center tracking-wide">
-                You may check demo questions
-              </p>
-              <DemoQuestions onQuestionSelect={() => {}} selectedId={null} />
-            </div>
           </motion.div>
 
         </div>
