@@ -1,14 +1,10 @@
 "use client";
 
-import { useState, useRef, useCallback, FormEvent } from "react";
+import { useState, FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import MacbookMockup from "./MacbookMockup";
+import DashboardMockup from "./DashboardMockup";
 import DemoQuestions from "./DemoQuestions";
-import { type Question } from "@/lib/questions";
-import { track } from "@/lib/analytics";
 import { siteConfig } from "@/lib/config";
-
-// ─── Animation variants ───────────────────────────────────────────────────────
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.09 } } };
 
@@ -20,8 +16,6 @@ const fadeUp = {
     transition: { duration: 0.65, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] },
   },
 };
-
-// ─── Small icons ─────────────────────────────────────────────────────────────
 
 function Check() {
   return (
@@ -40,39 +34,12 @@ function Spinner() {
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
-
 export default function HeroSection() {
   const { hero } = siteConfig;
 
-  // Email form
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // Demo interaction
-  const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
-  const [isThinking, setIsThinking] = useState(false);
-  const selectedRef = useRef<Question | null>(null);
-
-  // Keep ref in sync for use in callbacks without stale closure
-  const syncRef = (q: Question | null) => {
-    selectedRef.current = q;
-    setSelectedQuestion(q);
-  };
-
-  const handleQuestionSelect = useCallback((q: Question) => {
-    syncRef(q);
-    setIsThinking(true);
-    track("demo_started", { question_id: q.id, question_text: q.text, question_category: q.category });
-  }, []);
-
-  const handleThinkingComplete = useCallback(() => {
-    setIsThinking(false);
-    track("demo_completed", { question_id: selectedRef.current?.id });
-    // After showing "done" state briefly, reset
-    setTimeout(() => syncRef(null), 1600);
-  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -86,7 +53,7 @@ export default function HeroSection() {
   return (
     <section className="relative overflow-hidden">
 
-      {/* ── Background ── */}
+      {/* Background */}
       <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
         <div className="absolute inset-0" style={{ background: "linear-gradient(160deg, #eff6ff 0%, #ffffff 45%, #faf5ff 100%)" }} />
         <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.065) 1px, transparent 1px)", backgroundSize: "28px 28px", opacity: 0.55 }} />
@@ -96,17 +63,11 @@ export default function HeroSection() {
       </div>
 
       <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-14 lg:py-18">
-        <div className="grid lg:grid-cols-2 gap-10 xl:gap-14 items-start">
+        <div className="grid lg:grid-cols-2 gap-10 xl:gap-14 items-center">
 
-          {/* ══════════════════════════════════════
-              LEFT COLUMN — headline + CTAs
-          ══════════════════════════════════════ */}
-          <motion.div
-            variants={stagger}
-            initial="hidden"
-            animate="show"
-            className="flex flex-col gap-6 max-w-[560px] lg:sticky lg:top-24"
-          >
+          {/* LEFT COLUMN */}
+          <motion.div variants={stagger} initial="hidden" animate="show" className="flex flex-col gap-6 max-w-[560px]">
+
             {/* Badge */}
             <motion.div variants={fadeUp} className="flex">
               <div className="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5"
@@ -123,10 +84,7 @@ export default function HeroSection() {
             </motion.div>
 
             {/* Headline */}
-            <motion.h1
-              variants={fadeUp}
-              className="text-[2.5rem] sm:text-5xl xl:text-[3.4rem] font-bold leading-[1.08] tracking-tight"
-            >
+            <motion.h1 variants={fadeUp} className="text-[2.5rem] sm:text-5xl xl:text-[3.4rem] font-bold leading-[1.08] tracking-tight">
               {hero.headlineParts.map((part, i) =>
                 part.gradient ? (
                   <span key={i} className="block bg-gradient-to-r from-blue-600 via-violet-500 to-purple-600 bg-clip-text text-transparent">
@@ -138,7 +96,7 @@ export default function HeroSection() {
               )}
             </motion.h1>
 
-            {/* Sub */}
+            {/* Subheadline */}
             <motion.div variants={fadeUp} className="space-y-1.5">
               <p className="text-base sm:text-[17px] leading-relaxed text-slate-500">{hero.subheadline}</p>
               <p className="text-sm font-medium text-slate-400">{hero.subNote}</p>
@@ -147,7 +105,6 @@ export default function HeroSection() {
             {/* CTA buttons */}
             <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-3">
               <button
-                onClick={() => track("hero_cta_clicked", { button: "book_demo" })}
                 className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 text-sm font-semibold text-white rounded-xl transition-all duration-200"
                 style={{
                   background: "linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)",
@@ -169,10 +126,7 @@ export default function HeroSection() {
                 {hero.ctaPrimary}
               </button>
 
-              <button
-                onClick={() => track("hero_cta_clicked", { button: "platform_preview" })}
-                className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 text-sm font-medium text-slate-600 rounded-xl transition-all duration-200 border border-slate-200 bg-white hover:border-slate-300 hover:text-slate-900 hover:bg-slate-50"
-              >
+              <button className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 text-sm font-medium text-slate-600 rounded-xl transition-all duration-200 border border-slate-200 bg-white hover:border-slate-300 hover:text-slate-900 hover:bg-slate-50">
                 <svg className="w-4 h-4 shrink-0" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                   <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5" />
                   <path d="M6.5 5.5L11 8L6.5 10.5V5.5Z" fill="currentColor" />
@@ -181,7 +135,7 @@ export default function HeroSection() {
               </button>
             </motion.div>
 
-            {/* Trust badges */}
+            {/* Trust */}
             <motion.div variants={fadeUp} className="flex flex-wrap gap-x-5 gap-y-2">
               {hero.trust.map((t) => (
                 <div key={t} className="flex items-center gap-1.5">
@@ -191,7 +145,6 @@ export default function HeroSection() {
               ))}
             </motion.div>
 
-            {/* Divider */}
             <motion.div variants={fadeUp} className="w-full h-px bg-slate-100" />
 
             {/* Waitlist */}
@@ -212,7 +165,8 @@ export default function HeroSection() {
 
               <AnimatePresence mode="wait">
                 {!submitted ? (
-                  <motion.form key="form" initial={{ opacity: 1 }} exit={{ opacity: 0, y: -6 }} onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2">
+                  <motion.form key="form" initial={{ opacity: 1 }} exit={{ opacity: 0, y: -6 }} onSubmit={handleSubmit}
+                    className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="email"
                       value={email}
@@ -244,28 +198,24 @@ export default function HeroSection() {
             </motion.div>
           </motion.div>
 
-          {/* ══════════════════════════════════════
-              RIGHT COLUMN — MacBook + Demo Qs
-          ══════════════════════════════════════ */}
+          {/* RIGHT COLUMN — Dashboard + Demo Questions */}
           <motion.div
             initial={{ opacity: 0, x: 36 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.9, delay: 0.2, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
-            className="hidden lg:flex flex-col gap-6"
+            className="hidden lg:flex flex-col gap-8"
           >
-            {/* MacBook */}
-            <MacbookMockup
-              selectedQuestion={selectedQuestion?.text ?? null}
-              isThinking={isThinking}
-              onThinkingComplete={handleThinkingComplete}
-            />
+            <DashboardMockup />
 
-            {/* Demo questions */}
-            <DemoQuestions
-              onQuestionSelect={handleQuestionSelect}
-              selectedId={selectedQuestion?.id ?? null}
-            />
+            {/* Demo Questions section */}
+            <div>
+              <p className="text-sm font-semibold text-slate-500 mb-4 text-center tracking-wide">
+                You may check demo questions
+              </p>
+              <DemoQuestions onQuestionSelect={() => {}} selectedId={null} />
+            </div>
           </motion.div>
+
         </div>
       </div>
     </section>
