@@ -118,28 +118,6 @@ function TiltCard({ q, index, inView }: { q: Question; index: number; inView: bo
   );
 }
 
-// ─── Word reveal ──────────────────────────────────────────────────────────────
-
-function RevealWords({ text, className, delay = 0 }: { text: string; className?: string; delay?: number }) {
-  return (
-    <span className={className}>
-      {text.split(" ").map((word, i) => (
-        <span key={i} className="inline-block overflow-hidden mr-[0.26em] last:mr-0">
-          <motion.span
-            className="inline-block"
-            initial={{ y: "110%", opacity: 0 }}
-            whileInView={{ y: "0%", opacity: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.65, delay: delay + i * 0.07, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
-          >
-            {word}
-          </motion.span>
-        </span>
-      ))}
-    </span>
-  );
-}
-
 // ─── Refresh icon ─────────────────────────────────────────────────────────────
 
 function RefreshIcon({ spinning }: { spinning: boolean }) {
@@ -271,15 +249,17 @@ export default function DemoSection() {
             <span className="text-[11px] font-semibold tracking-[0.1em] uppercase text-blue-700">Live Demo</span>
           </motion.div>
 
-          <h2 className="text-4xl sm:text-5xl xl:text-[3.2rem] font-bold tracking-tight mb-5 leading-[1.1]">
-            <RevealWords text="You may check" className="text-slate-900" delay={0.35} />
-            {" "}
-            <RevealWords
-              text="demo questions"
-              className="bg-gradient-to-r from-blue-600 via-violet-500 to-purple-600 bg-clip-text text-transparent"
-              delay={0.52}
-            />
-          </h2>
+          <motion.h2
+            className="text-4xl sm:text-5xl xl:text-[3.2rem] font-bold tracking-tight mb-5 leading-[1.1]"
+            initial={{ opacity: 0, y: 28 }}
+            animate={inView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.7, delay: 0.38, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
+          >
+            <span className="text-slate-900">You may check </span>
+            <span className="bg-gradient-to-r from-blue-600 via-violet-500 to-purple-600 bg-clip-text text-transparent">
+              demo questions
+            </span>
+          </motion.h2>
 
           <motion.p
             className="text-slate-500 text-base sm:text-lg max-w-xl mx-auto leading-relaxed"
