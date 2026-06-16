@@ -25,18 +25,18 @@ export const questionPool: Question[] = [
   { id: "q_015", text: "Generate a swing trading watchlist using momentum and volume", weight: 1, category: "portfolio", impressions: 0, clicks: 0 },
 ];
 
+function fisherYates<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export function getRandomQuestions(count = 3, excludeIds: string[] = []): Question[] {
   let pool = questionPool.filter((q) => !excludeIds.includes(q.id));
+  // If not enough left after exclusion, reset and use full pool
   if (pool.length < count) pool = [...questionPool];
-  const weighted = pool.flatMap((q) => Array<Question>(Math.max(1, q.weight)).fill(q));
-  const seen = new Set<string>();
-  const result: Question[] = [];
-  for (const q of weighted.sort(() => Math.random() - 0.5)) {
-    if (!seen.has(q.id)) {
-      seen.add(q.id);
-      result.push(q);
-      if (result.length >= count) break;
-    }
-  }
-  return result;
+  return fisherYates(pool).slice(0, count);
 }
