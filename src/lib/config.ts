@@ -1,5 +1,5 @@
 export const siteConfig = {
-  name: "TradeOS",
+  name: "QuantPilot",
   tagline: "The Operating System for Modern Traders",
   description:
     "Connect your brokers, portfolio trackers, risk systems, research tools, journals, analytics and execution platforms into a single dashboard.",

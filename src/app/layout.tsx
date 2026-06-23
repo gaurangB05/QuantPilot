@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TradeOS — The Operating System for Modern Traders",
+  title: "QuantPilot — The Operating System for Modern Traders",
   description:
     "Connect your brokers, portfolio trackers, risk systems, research tools, journals, analytics and execution platforms into a single dashboard.",
 };

@@ -63,7 +63,7 @@ export default function DashboardMockup() {
           </div>
           <div className="flex-1 mx-3">
             <div className="bg-white border border-[#E5E7EB] rounded-md px-3 py-1 text-center">
-              <span className="text-[10px] text-[#9CA3AF]">app.tradeos.io/dashboard</span>
+              <span className="text-[10px] text-[#9CA3AF]">app.quantpilot.io/dashboard</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5">

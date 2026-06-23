@@ -244,7 +244,7 @@ export default function MacbookMockup({ selectedQuestion, isThinking, onThinking
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 <span className="text-[9px] text-gray-400 font-medium tracking-tight">
-                  app.tradeos.io — AI Dashboard
+                  app.quantpilot.io — AI Dashboard
                 </span>
               </div>
             </div>
@@ -293,7 +293,7 @@ export default function MacbookMockup({ selectedQuestion, isThinking, onThinking
                 </div>
               </div>
               <p className="text-[8px] text-gray-300 text-center mt-1">
-                Powered by TradeOS AI · Connected to your brokers
+                Powered by QuantPilot AI · Connected to your brokers
               </p>
             </div>
           </div>
