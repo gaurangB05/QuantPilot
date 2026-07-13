@@ -156,7 +156,6 @@ export default function HeroSection() {
   const [chipIdx, setChipIdx] = useState<[number, number, number]>([0, 0, 0]);
   const [shuffleSpin, setShuffleSpin] = useState(false);
   const [activeQuestion, setActiveQuestion] = useState("");
-
   const [overlayDash, setOverlayDash] = useState<{ id: DashboardId; question: string } | null>(null);
 
   const typingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -186,16 +185,13 @@ export default function HeroSection() {
     setActiveQuestion("");
   };
 
-  // Typing animation
   useEffect(() => {
     if (!activeChip || !activeQuestion) return;
-
     const full = activeQuestion;
     let i = 0;
     let alive = true;
     setIsTyping(true);
     setText("");
-
     typingRef.current = setInterval(() => {
       if (!alive) return;
       i++;
@@ -205,7 +201,6 @@ export default function HeroSection() {
         setIsTyping(false);
       }
     }, 20);
-
     return () => {
       alive = false;
       if (typingRef.current) clearInterval(typingRef.current);
@@ -215,7 +210,6 @@ export default function HeroSection() {
 
   const handleChipClick = (chip: Chip) => {
     if (activeChip === chip.id) {
-      // Deselect — reset everything
       if (typingRef.current) clearInterval(typingRef.current);
       if (buildTimerRef.current) clearTimeout(buildTimerRef.current);
       setIsTyping(false);
@@ -224,7 +218,6 @@ export default function HeroSection() {
       setText("");
       setActiveQuestion("");
     } else {
-      // Select — start building
       if (buildTimerRef.current) clearTimeout(buildTimerRef.current);
       setActiveChip(chip.id);
       setActiveQuestion(chip.question);
@@ -254,17 +247,21 @@ export default function HeroSection() {
         <div className="grid lg:grid-cols-2 gap-12 xl:gap-20 items-center">
 
           {/* ── LEFT ── */}
-          <div className="flex flex-col gap-6 max-w-[540px]">
+          <div className="flex flex-col gap-5 max-w-[540px]">
 
-            {/* Eyebrow */}
-            <motion.p
-              className="text-[11px] font-bold tracking-[0.16em] uppercase text-[#2563EB]"
+            {/* Beta badge */}
+            <motion.div
+              className="flex items-center gap-2 self-start px-3 py-1.5 rounded-full"
+              style={{ border: "1px solid #BFDBFE", background: "#EFF6FF" }}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45 }}
             >
-              Ask Any Trading Question
-            </motion.p>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-pulse inline-block" />
+              <span className="text-[11px] font-semibold text-[#2563EB] tracking-wide">
+                AI-powered trading intelligence &middot; Now in beta
+              </span>
+            </motion.div>
 
             {/* Headline */}
             <motion.h1
@@ -273,25 +270,85 @@ export default function HeroSection() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.08, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
             >
-              Get A Custom Dashboard
-              <span className="block text-[#2563EB]">Built In Seconds</span>
+              Ask a question.
+              <span className="block text-[#2563EB]">Get a live dashboard.</span>
             </motion.h1>
 
             {/* Subtext */}
             <motion.p
-              className="text-[16.5px] leading-relaxed text-[#6B7280]"
+              className="text-[16px] leading-relaxed text-[#6B7280]"
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.16 }}
             >
-              Every question creates a completely different workspace designed by the AI.
+              Type any trading question. QuantPilot builds your dashboard in seconds — FII flows, Greeks, stress tests, and more.
             </motion.p>
+
+            {/* Chips — ABOVE the input */}
+            <motion.div
+              className="flex flex-wrap items-center gap-2"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.26 }}
+            >
+              <span className="text-[11.5px] font-medium text-[#9CA3AF]">Try a demo:</span>
+              {chips.map((chip, i) => (
+                <motion.button
+                  key={`${chipIdx[i]}-${chip.id}`}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35, delay: 0.30 + i * 0.07 }}
+                  onClick={() => handleChipClick(chip)}
+                  className="px-3.5 py-2 rounded-full text-[12.5px] font-medium cursor-pointer"
+                  style={{
+                    background: activeChip === chip.id ? "#EFF6FF" : "#F8FAFC",
+                    border: activeChip === chip.id ? "1px solid #2563EB" : "1px solid #E5E7EB",
+                    color: activeChip === chip.id ? "#2563EB" : "#374151",
+                    transition: "all 0.15s ease",
+                  }}
+                  whileHover={activeChip !== chip.id ? { background: "#ffffff", boxShadow: "0 2px 8px rgba(0,0,0,0.07)" } : {}}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  {chip.label}
+                </motion.button>
+              ))}
+            </motion.div>
+
+            {/* Shuffle button */}
+            <motion.button
+              onClick={shuffleChips}
+              className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-full cursor-pointer self-start"
+              style={{ border: "1.5px solid #E5E7EB", background: "transparent" }}
+              whileHover={{ backgroundColor: "#EFF6FF", borderColor: "#2563EB", boxShadow: "0 4px 18px rgba(37,99,235,0.13)" }}
+              whileTap={{ scale: 0.95 }}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.52 }}
+            >
+              <motion.svg
+                width="28" height="18" viewBox="0 0 28 18" fill="none"
+                animate={shuffleSpin ? { rotate: 360 } : { rotate: 0 }}
+                transition={{ duration: 0.55, ease: [0.4, 0, 0.2, 1] as [number, number, number, number] }}
+              >
+                <path d="M14 9 C17 3 23 1 24 4 C27 7 26 14 23 14 C20 14 14 9 14 9"
+                  stroke="#6B7280" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M22 2 L24 4 L22 6"
+                  stroke="#6B7280" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M14 9 C11 15 5 17 4 14 C1 11 2 4 5 4 C8 4 14 9 14 9"
+                  stroke="#6B7280" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M6 16 L4 14 L6 12"
+                  stroke="#6B7280" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
+              </motion.svg>
+              <span className="text-[13px] font-medium" style={{ color: "#6B7280" }}>
+                Shuffle questions
+              </span>
+            </motion.button>
 
             {/* Input */}
             <motion.div
               initial={{ opacity: 0, y: 20, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.65, delay: 0.24, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
+              transition={{ duration: 0.65, delay: 0.60, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
               className="rounded-2xl overflow-hidden"
               style={{
                 background: "#ffffff",
@@ -312,8 +369,7 @@ export default function HeroSection() {
 
               <div className="flex items-center justify-between px-4 py-3 border-t border-[#F5F5F5]">
                 <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-md flex items-center justify-center"
-                    style={{ background: "#2563EB" }}>
+                  <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: "#2563EB" }}>
                     <svg width="10" height="10" viewBox="0 0 14 14" fill="none">
                       <path d="M7 1L8.8 5.4H13.6L9.8 8L11.4 12.5L7 9.8L2.6 12.5L4.2 8L0.4 5.4H5.2L7 1Z" fill="white" />
                     </svg>
@@ -346,71 +402,33 @@ export default function HeroSection() {
               </div>
             </motion.div>
 
-            {/* Chips */}
+            {/* Trust bar */}
             <motion.div
-              className="flex flex-wrap items-center gap-2"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.38 }}
+              className="flex flex-wrap items-center gap-x-1 gap-y-1"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.72 }}
             >
-              {chips.map((chip, i) => (
-                <motion.button
-                  key={`${chipIdx[i]}-${chip.id}`}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.35, delay: 0.42 + i * 0.07 }}
-                  onClick={() => handleChipClick(chip)}
-                  className="px-3.5 py-2 rounded-full text-[12.5px] font-medium"
-                  style={{
-                    background: activeChip === chip.id ? "#EFF6FF" : "#F8FAFC",
-                    border: activeChip === chip.id ? "1px solid #2563EB" : "1px solid #E5E7EB",
-                    color: activeChip === chip.id ? "#2563EB" : "#374151",
-                    cursor: "pointer",
-                    transition: "all 0.15s ease",
-                  }}
-                  whileHover={activeChip !== chip.id ? { background: "#ffffff", boxShadow: "0 2px 8px rgba(0,0,0,0.07)" } : {}}
-                  whileTap={{ scale: 0.97 }}
-                >
-                  {chip.label}
-                </motion.button>
+              {["No credit card needed", "Dashboard in < 5 seconds", "Built for Indian markets"].map((item, i) => (
+                <span key={item} className="flex items-center gap-1">
+                  {i > 0 && <span className="text-[#D1D5DB] mx-0.5 select-none">&middot;</span>}
+                  <span className="text-[12px] text-[#9CA3AF] font-medium">{item}</span>
+                </span>
               ))}
-
             </motion.div>
 
-            {/* Shuffle button — separate row */}
-            <motion.button
-              onClick={shuffleChips}
-              className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-full cursor-pointer self-start"
-              style={{ border: "1.5px solid #E5E7EB", background: "transparent" }}
-              whileHover={{ backgroundColor: "#EFF6FF", borderColor: "#2563EB", boxShadow: "0 4px 18px rgba(37,99,235,0.13)" }}
-              whileTap={{ scale: 0.95 }}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.68 }}
+            {/* Pricing signal */}
+            <motion.p
+              className="text-[12px] text-[#9CA3AF]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.78 }}
             >
-              {/* Infinity shuffle icon */}
-              <motion.svg
-                width="28" height="18" viewBox="0 0 28 18" fill="none"
-                animate={shuffleSpin ? { rotate: 360 } : { rotate: 0 }}
-                transition={{ duration: 0.55, ease: [0.4, 0, 0.2, 1] as [number, number, number, number] }}
-              >
-                {/* Right loop */}
-                <path d="M14 9 C17 3 23 1 24 4 C27 7 26 14 23 14 C20 14 14 9 14 9"
-                  stroke="#6B7280" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
-                {/* Right arrowhead */}
-                <path d="M22 2 L24 4 L22 6"
-                  stroke="#6B7280" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
-                {/* Left loop */}
-                <path d="M14 9 C11 15 5 17 4 14 C1 11 2 4 5 4 C8 4 14 9 14 9"
-                  stroke="#6B7280" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
-                {/* Left arrowhead */}
-                <path d="M6 16 L4 14 L6 12"
-                  stroke="#6B7280" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
-              </motion.svg>
-              <span className="text-[13px] font-medium" style={{ color: "#6B7280" }}>
-                Shuffle questions
-              </span>
-            </motion.button>
+              Free during beta &middot;{" "}
+              <a href="/pricing" className="text-[#2563EB] hover:underline font-medium">
+                plans from &#8377;999/mo after launch
+              </a>
+            </motion.p>
 
             {/* Mobile dashboard panel */}
             <div className="lg:hidden mt-2">

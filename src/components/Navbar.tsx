@@ -59,17 +59,13 @@ export default function Navbar() {
 
         {/* Desktop CTAs */}
         <div className="hidden md:flex items-center gap-3">
-          <a href="/schedule-demo"
-            className="px-4 py-2 text-sm font-medium text-[#374151] rounded-lg hover:bg-[#F8FAFC] transition-all duration-150">
-            Schedule Demo
-          </a>
           <a href="/request-access"
             className="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-all duration-150"
             style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)", boxShadow: "0 1px 6px rgba(37,99,235,0.28)" }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "linear-gradient(135deg, #1D4ED8, #2563EB)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "linear-gradient(135deg, #2563EB, #60A5FA)"; }}
           >
-            Request Access
+            Get Early Access
           </a>
         </div>
 
@@ -100,14 +96,10 @@ export default function Navbar() {
                 </a>
               ))}
               <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-[#e5e7eb]">
-                <a href="/schedule-demo" onClick={() => setMobileOpen(false)}
-                  className="px-4 py-3 text-sm font-medium text-[#374151] border border-[#e5e7eb] rounded-xl text-center hover:bg-[#F8FAFC] transition-all">
-                  Schedule Demo
-                </a>
                 <a href="/request-access" onClick={() => setMobileOpen(false)}
                   className="px-4 py-3 text-sm font-semibold text-white rounded-xl text-center"
                   style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)" }}>
-                  Request Access
+                  Get Early Access
                 </a>
               </div>
             </div>

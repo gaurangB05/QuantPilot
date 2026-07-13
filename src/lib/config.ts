@@ -5,9 +5,9 @@ export const siteConfig = {
     "Connect your brokers, portfolio trackers, risk systems, research tools, journals, analytics and execution platforms into a single dashboard.",
   nav: {
     links: [
-      { label: "Features", href: "#features" },
-      { label: "Research", href: "#research" },
-      { label: "Pricing", href: "#pricing" },
+      { label: "Features", href: "/features" },
+      { label: "Research", href: "/research" },
+      { label: "Pricing", href: "/pricing" },
     ],
   },
   hero: {
