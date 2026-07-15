@@ -10,6 +10,7 @@ import {
   type KiteOrder,
   type KiteTrade,
 } from "@/lib/kite";
+import { generateDashboardConfig } from "@/lib/ai";
 import Navbar from "@/components/Navbar";
 
 // ─── Server actions ────────────────────────────────────────────────────────────
@@ -60,6 +61,44 @@ async function refreshData() {
   }
 
   redirect("/dashboard");
+}
+
+async function personalizeDashboard(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const prompt = (formData.get("prompt") as string)?.trim();
+  if (!prompt) redirect("/dashboard");
+
+  const { data: tradingRow } = await supabase
+    .from("user_trading_data")
+    .select("profile, margins, positions, holdings, orders, trades")
+    .eq("user_id", user.id)
+    .single();
+
+  if (!tradingRow) redirect("/dashboard");
+
+  let widgets: string[];
+  try {
+    const config = await generateDashboardConfig(
+      {
+        profile: tradingRow.profile,
+        margins: tradingRow.margins,
+        positions: tradingRow.positions,
+        holdings: tradingRow.holdings,
+        orders: tradingRow.orders,
+        trades: tradingRow.trades,
+      },
+      prompt
+    );
+    widgets = config.widgets;
+  } catch {
+    redirect("/dashboard?error=ai_personalization_failed");
+  }
+
+  redirect(`/dashboard?widgets=${encodeURIComponent(widgets.join(","))}`);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -183,11 +222,12 @@ function TokenExpired({ kiteUserName }: { kiteUserName?: string }) {
 
 // ─── Portfolio view ───────────────────────────────────────────────────────────
 
-function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt }: {
+function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets }: {
   data: KitePortfolioData;
   kiteUserName: string;
   kiteUserId: string;
   fetchedAt: string;
+  widgets?: string;
 }) {
   const equity = data.margins.equity;
   const netPositions = data.positions.net.filter((p) => p.quantity !== 0);
@@ -206,6 +246,17 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt }: {
     dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata",
   }).format(new Date(fetchedAt));
 
+  // AI-personalized widget selection — which existing sections show, and in what order.
+  // With no prompt submitted yet (widgets undefined), every section shows in its original order.
+  const requested = widgets ? widgets.split(",").map((w) => w.trim().toLowerCase()).filter(Boolean) : null;
+  const isVisible = (keywords: string[]) =>
+    !requested || requested.some((w) => keywords.some((k) => w.includes(k)));
+  const orderIndex = (keywords: string[]) => {
+    if (!requested) return 0;
+    const idx = requested.findIndex((w) => keywords.some((k) => w.includes(k)));
+    return idx === -1 ? requested.length : idx;
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
 
@@ -218,6 +269,20 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt }: {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <form action={personalizeDashboard} className="flex items-center gap-2">
+            <input
+              type="text"
+              name="prompt"
+              placeholder="Personalize your dashboard…"
+              className="px-3 py-2 rounded-xl text-[12.5px] text-[#111827] w-56"
+              style={{ border: "1px solid #E5E7EB", background: "white" }}
+            />
+            <button type="submit"
+              className="px-4 py-2 rounded-xl text-[12.5px] font-medium text-white cursor-pointer"
+              style={{ background: "#2563EB" }}>
+              Personalize
+            </button>
+          </form>
           <form action={refreshData}>
             <button type="submit"
               className="px-4 py-2 rounded-xl text-[12.5px] font-medium text-[#6B7280] cursor-pointer"
@@ -235,191 +300,222 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt }: {
         </div>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {stats.map((s) => (
-          <div key={s.label} className="p-5 rounded-2xl"
-            style={{ background: "#F8FAFC", border: "1px solid #E5E7EB" }}>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF] mb-2">{s.label}</p>
-            <p className="text-[1.4rem] font-bold text-[#111827] leading-none">{s.value}</p>
-            <div className="flex items-center gap-2 mt-1.5">
-              <p className="text-[11.5px] text-[#9CA3AF]">{s.sub}</p>
-              {s.pnl !== undefined && (
-                <span className="text-[11px] font-semibold" style={{ color: s.pnl >= 0 ? "#16A34A" : "#DC2626" }}>
-                  {s.pnl >= 0 ? "+" : ""}{fmt(s.pnl)}
-                </span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Positions */}
-      <div className="mb-6 rounded-2xl overflow-hidden" style={{ border: "1px solid #E5E7EB" }}>
-        <div className="px-5 py-4 flex items-center justify-between"
-          style={{ background: "#F8FAFC", borderBottom: "1px solid #E5E7EB" }}>
-          <h2 className="text-[14px] font-semibold text-[#111827]">Open Positions</h2>
-          <span className="text-[12px] text-[#9CA3AF]">{netPositions.length} positions</span>
-        </div>
-
-        {netPositions.length === 0 ? (
-          <p className="px-5 py-8 text-[13.5px] text-[#9CA3AF] text-center">No open positions today.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr style={{ borderBottom: "1px solid #F3F4F6" }}>
-                  {["Symbol", "Product", "Qty", "Avg Price", "LTP", "P&L"].map((h) => (
-                    <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {netPositions.map((p, i) => (
-                  <tr key={`${p.tradingsymbol}-${i}`}
-                    style={{ borderBottom: "1px solid #F9FAFB", background: i % 2 === 0 ? "white" : "#FAFBFF" }}>
-                    <td className="px-5 py-3.5 font-semibold text-[#111827]">{p.tradingsymbol}</td>
-                    <td className="px-5 py-3.5"><Badge label={p.product} color="blue" /></td>
-                    <td className="px-5 py-3.5 text-[#374151]">
-                      <span style={{ color: p.quantity > 0 ? "#16A34A" : "#DC2626" }}>{p.quantity > 0 ? "+" : ""}{p.quantity}</span>
-                    </td>
-                    <td className="px-5 py-3.5 text-[#374151]">{fmt(p.average_price)}</td>
-                    <td className="px-5 py-3.5 text-[#374151]">{fmt(p.last_price)}</td>
-                    <td className="px-5 py-3.5"><PnlCell value={p.pnl} /></td>
-                  </tr>
+      {(() => {
+        const sections = [
+          {
+            key: "overview",
+            keywords: ["portfolio", "pnl", "overview", "balance", "margin", "summary"],
+            node: (
+              <div key="overview" className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                {stats.map((s) => (
+                  <div key={s.label} className="p-5 rounded-2xl"
+                    style={{ background: "#F8FAFC", border: "1px solid #E5E7EB" }}>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF] mb-2">{s.label}</p>
+                    <p className="text-[1.4rem] font-bold text-[#111827] leading-none">{s.value}</p>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <p className="text-[11.5px] text-[#9CA3AF]">{s.sub}</p>
+                      {s.pnl !== undefined && (
+                        <span className="text-[11px] font-semibold" style={{ color: s.pnl >= 0 ? "#16A34A" : "#DC2626" }}>
+                          {s.pnl >= 0 ? "+" : ""}{fmt(s.pnl)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+              </div>
+            ),
+          },
+          {
+            key: "positions",
+            keywords: ["position"],
+            node: (
+              <div key="positions" className="mb-6 rounded-2xl overflow-hidden" style={{ border: "1px solid #E5E7EB" }}>
+                <div className="px-5 py-4 flex items-center justify-between"
+                  style={{ background: "#F8FAFC", borderBottom: "1px solid #E5E7EB" }}>
+                  <h2 className="text-[14px] font-semibold text-[#111827]">Open Positions</h2>
+                  <span className="text-[12px] text-[#9CA3AF]">{netPositions.length} positions</span>
+                </div>
 
-      {/* Holdings */}
-      <div className="mb-6 rounded-2xl overflow-hidden" style={{ border: "1px solid #E5E7EB" }}>
-        <div className="px-5 py-4 flex items-center justify-between"
-          style={{ background: "#F8FAFC", borderBottom: "1px solid #E5E7EB" }}>
-          <h2 className="text-[14px] font-semibold text-[#111827]">Holdings</h2>
-          <span className="text-[12px] text-[#9CA3AF]">{data.holdings.length} stocks</span>
-        </div>
+                {netPositions.length === 0 ? (
+                  <p className="px-5 py-8 text-[13.5px] text-[#9CA3AF] text-center">No open positions today.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[13px]">
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid #F3F4F6" }}>
+                          {["Symbol", "Product", "Qty", "Avg Price", "LTP", "P&L"].map((h) => (
+                            <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {netPositions.map((p, i) => (
+                          <tr key={`${p.tradingsymbol}-${i}`}
+                            style={{ borderBottom: "1px solid #F9FAFB", background: i % 2 === 0 ? "white" : "#FAFBFF" }}>
+                            <td className="px-5 py-3.5 font-semibold text-[#111827]">{p.tradingsymbol}</td>
+                            <td className="px-5 py-3.5"><Badge label={p.product} color="blue" /></td>
+                            <td className="px-5 py-3.5 text-[#374151]">
+                              <span style={{ color: p.quantity > 0 ? "#16A34A" : "#DC2626" }}>{p.quantity > 0 ? "+" : ""}{p.quantity}</span>
+                            </td>
+                            <td className="px-5 py-3.5 text-[#374151]">{fmt(p.average_price)}</td>
+                            <td className="px-5 py-3.5 text-[#374151]">{fmt(p.last_price)}</td>
+                            <td className="px-5 py-3.5"><PnlCell value={p.pnl} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ),
+          },
+          {
+            key: "holdings",
+            keywords: ["holding"],
+            node: (
+              <div key="holdings" className="mb-6 rounded-2xl overflow-hidden" style={{ border: "1px solid #E5E7EB" }}>
+                <div className="px-5 py-4 flex items-center justify-between"
+                  style={{ background: "#F8FAFC", borderBottom: "1px solid #E5E7EB" }}>
+                  <h2 className="text-[14px] font-semibold text-[#111827]">Holdings</h2>
+                  <span className="text-[12px] text-[#9CA3AF]">{data.holdings.length} stocks</span>
+                </div>
 
-        {data.holdings.length === 0 ? (
-          <p className="px-5 py-8 text-[13.5px] text-[#9CA3AF] text-center">No holdings in your demat account.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr style={{ borderBottom: "1px solid #F3F4F6" }}>
-                  {["Symbol", "Qty", "Avg Price", "LTP", "Day Change", "Total P&L"].map((h) => (
-                    <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.holdings.map((h, i) => (
-                  <tr key={h.tradingsymbol}
-                    style={{ borderBottom: "1px solid #F9FAFB", background: i % 2 === 0 ? "white" : "#FAFBFF" }}>
-                    <td className="px-5 py-3.5 font-semibold text-[#111827]">{h.tradingsymbol}</td>
-                    <td className="px-5 py-3.5 text-[#374151]">{h.quantity}</td>
-                    <td className="px-5 py-3.5 text-[#374151]">{fmt(h.average_price)}</td>
-                    <td className="px-5 py-3.5 text-[#374151]">{fmt(h.last_price)}</td>
-                    <td className="px-5 py-3.5">
-                      <span className="text-[13px] font-medium" style={{ color: h.day_change >= 0 ? "#16A34A" : "#DC2626" }}>
-                        {pct(h.day_change_percentage)}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5"><PnlCell value={h.pnl} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                {data.holdings.length === 0 ? (
+                  <p className="px-5 py-8 text-[13.5px] text-[#9CA3AF] text-center">No holdings in your demat account.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[13px]">
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid #F3F4F6" }}>
+                          {["Symbol", "Qty", "Avg Price", "LTP", "Day Change", "Total P&L"].map((h) => (
+                            <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.holdings.map((h, i) => (
+                          <tr key={h.tradingsymbol}
+                            style={{ borderBottom: "1px solid #F9FAFB", background: i % 2 === 0 ? "white" : "#FAFBFF" }}>
+                            <td className="px-5 py-3.5 font-semibold text-[#111827]">{h.tradingsymbol}</td>
+                            <td className="px-5 py-3.5 text-[#374151]">{h.quantity}</td>
+                            <td className="px-5 py-3.5 text-[#374151]">{fmt(h.average_price)}</td>
+                            <td className="px-5 py-3.5 text-[#374151]">{fmt(h.last_price)}</td>
+                            <td className="px-5 py-3.5">
+                              <span className="text-[13px] font-medium" style={{ color: h.day_change >= 0 ? "#16A34A" : "#DC2626" }}>
+                                {pct(h.day_change_percentage)}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5"><PnlCell value={h.pnl} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ),
+          },
+          {
+            key: "orders",
+            keywords: ["order"],
+            node: (
+              <div key="orders" className="mb-6 rounded-2xl overflow-hidden" style={{ border: "1px solid #E5E7EB" }}>
+                <div className="px-5 py-4 flex items-center justify-between"
+                  style={{ background: "#F8FAFC", borderBottom: "1px solid #E5E7EB" }}>
+                  <h2 className="text-[14px] font-semibold text-[#111827]">Orders</h2>
+                  <span className="text-[12px] text-[#9CA3AF]">{data.orders.length} today</span>
+                </div>
 
-      {/* Orders */}
-      <div className="mb-6 rounded-2xl overflow-hidden" style={{ border: "1px solid #E5E7EB" }}>
-        <div className="px-5 py-4 flex items-center justify-between"
-          style={{ background: "#F8FAFC", borderBottom: "1px solid #E5E7EB" }}>
-          <h2 className="text-[14px] font-semibold text-[#111827]">Orders</h2>
-          <span className="text-[12px] text-[#9CA3AF]">{data.orders.length} today</span>
-        </div>
+                {data.orders.length === 0 ? (
+                  <p className="px-5 py-8 text-[13.5px] text-[#9CA3AF] text-center">No orders placed today.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[13px]">
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid #F3F4F6" }}>
+                          {["Symbol", "Type", "Product", "Qty", "Price", "Status", "Time"].map((h) => (
+                            <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.orders.map((o, i) => (
+                          <tr key={o.order_id}
+                            style={{ borderBottom: "1px solid #F9FAFB", background: i % 2 === 0 ? "white" : "#FAFBFF" }}>
+                            <td className="px-5 py-3.5 font-semibold text-[#111827]">{o.tradingsymbol}</td>
+                            <td className="px-5 py-3.5">
+                              <Badge label={o.transaction_type} color={o.transaction_type === "BUY" ? "green" : "red"} />
+                            </td>
+                            <td className="px-5 py-3.5"><Badge label={o.product} color="blue" /></td>
+                            <td className="px-5 py-3.5 text-[#374151]">{o.quantity}</td>
+                            <td className="px-5 py-3.5 text-[#374151]">{o.average_price > 0 ? fmt(o.average_price) : fmt(o.price)}</td>
+                            <td className="px-5 py-3.5"><Badge label={o.status} color={orderStatusColor(o.status)} /></td>
+                            <td className="px-5 py-3.5 text-[#9CA3AF] text-[12px]">
+                              {o.order_timestamp ? new Intl.DateTimeFormat("en-IN", { timeStyle: "short", timeZone: "Asia/Kolkata" }).format(new Date(o.order_timestamp)) : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ),
+          },
+          {
+            key: "trades",
+            keywords: ["trade"],
+            node: (
+              <div key="trades" className="rounded-2xl overflow-hidden" style={{ border: "1px solid #E5E7EB" }}>
+                <div className="px-5 py-4 flex items-center justify-between"
+                  style={{ background: "#F8FAFC", borderBottom: "1px solid #E5E7EB" }}>
+                  <h2 className="text-[14px] font-semibold text-[#111827]">Trades</h2>
+                  <span className="text-[12px] text-[#9CA3AF]">{data.trades.length} executed today</span>
+                </div>
 
-        {data.orders.length === 0 ? (
-          <p className="px-5 py-8 text-[13.5px] text-[#9CA3AF] text-center">No orders placed today.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr style={{ borderBottom: "1px solid #F3F4F6" }}>
-                  {["Symbol", "Type", "Product", "Qty", "Price", "Status", "Time"].map((h) => (
-                    <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.orders.map((o, i) => (
-                  <tr key={o.order_id}
-                    style={{ borderBottom: "1px solid #F9FAFB", background: i % 2 === 0 ? "white" : "#FAFBFF" }}>
-                    <td className="px-5 py-3.5 font-semibold text-[#111827]">{o.tradingsymbol}</td>
-                    <td className="px-5 py-3.5">
-                      <Badge label={o.transaction_type} color={o.transaction_type === "BUY" ? "green" : "red"} />
-                    </td>
-                    <td className="px-5 py-3.5"><Badge label={o.product} color="blue" /></td>
-                    <td className="px-5 py-3.5 text-[#374151]">{o.quantity}</td>
-                    <td className="px-5 py-3.5 text-[#374151]">{o.average_price > 0 ? fmt(o.average_price) : fmt(o.price)}</td>
-                    <td className="px-5 py-3.5"><Badge label={o.status} color={orderStatusColor(o.status)} /></td>
-                    <td className="px-5 py-3.5 text-[#9CA3AF] text-[12px]">
-                      {o.order_timestamp ? new Intl.DateTimeFormat("en-IN", { timeStyle: "short", timeZone: "Asia/Kolkata" }).format(new Date(o.order_timestamp)) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                {data.trades.length === 0 ? (
+                  <p className="px-5 py-8 text-[13.5px] text-[#9CA3AF] text-center">No trades executed today.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[13px]">
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid #F3F4F6" }}>
+                          {["Symbol", "Type", "Product", "Qty", "Price", "Time"].map((h) => (
+                            <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.trades.map((t, i) => (
+                          <tr key={t.trade_id}
+                            style={{ borderBottom: "1px solid #F9FAFB", background: i % 2 === 0 ? "white" : "#FAFBFF" }}>
+                            <td className="px-5 py-3.5 font-semibold text-[#111827]">{t.tradingsymbol}</td>
+                            <td className="px-5 py-3.5">
+                              <Badge label={t.transaction_type} color={t.transaction_type === "BUY" ? "green" : "red"} />
+                            </td>
+                            <td className="px-5 py-3.5"><Badge label={t.product} color="blue" /></td>
+                            <td className="px-5 py-3.5 text-[#374151]">{t.quantity}</td>
+                            <td className="px-5 py-3.5 text-[#374151]">{fmt(t.average_price)}</td>
+                            <td className="px-5 py-3.5 text-[#9CA3AF] text-[12px]">
+                              {t.fill_timestamp ? new Intl.DateTimeFormat("en-IN", { timeStyle: "short", timeZone: "Asia/Kolkata" }).format(new Date(t.fill_timestamp)) : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ),
+          },
+        ];
 
-      {/* Trades */}
-      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #E5E7EB" }}>
-        <div className="px-5 py-4 flex items-center justify-between"
-          style={{ background: "#F8FAFC", borderBottom: "1px solid #E5E7EB" }}>
-          <h2 className="text-[14px] font-semibold text-[#111827]">Trades</h2>
-          <span className="text-[12px] text-[#9CA3AF]">{data.trades.length} executed today</span>
-        </div>
+        let visible = sections.filter((s) => isVisible(s.keywords));
+        if (visible.length === 0) visible = sections; // AI matched nothing usable — fall back to full dashboard
+        if (requested) visible = [...visible].sort((a, b) => orderIndex(a.keywords) - orderIndex(b.keywords));
 
-        {data.trades.length === 0 ? (
-          <p className="px-5 py-8 text-[13.5px] text-[#9CA3AF] text-center">No trades executed today.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr style={{ borderBottom: "1px solid #F3F4F6" }}>
-                  {["Symbol", "Type", "Product", "Qty", "Price", "Time"].map((h) => (
-                    <th key={h} className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.trades.map((t, i) => (
-                  <tr key={t.trade_id}
-                    style={{ borderBottom: "1px solid #F9FAFB", background: i % 2 === 0 ? "white" : "#FAFBFF" }}>
-                    <td className="px-5 py-3.5 font-semibold text-[#111827]">{t.tradingsymbol}</td>
-                    <td className="px-5 py-3.5">
-                      <Badge label={t.transaction_type} color={t.transaction_type === "BUY" ? "green" : "red"} />
-                    </td>
-                    <td className="px-5 py-3.5"><Badge label={t.product} color="blue" /></td>
-                    <td className="px-5 py-3.5 text-[#374151]">{t.quantity}</td>
-                    <td className="px-5 py-3.5 text-[#374151]">{fmt(t.average_price)}</td>
-                    <td className="px-5 py-3.5 text-[#9CA3AF] text-[12px]">
-                      {t.fill_timestamp ? new Intl.DateTimeFormat("en-IN", { timeStyle: "short", timeZone: "Asia/Kolkata" }).format(new Date(t.fill_timestamp)) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+        return visible.map((s) => s.node);
+      })()}
     </div>
   );
 }
@@ -429,7 +525,7 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt }: {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; widgets?: string }>;
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -443,6 +539,7 @@ export default async function DashboardPage({
     kite_auth_failed: "Zerodha authentication failed. Please try again.",
     kite_login_cancelled: "Login was cancelled. Connect your account to continue.",
     kite_token_expired: "Your Zerodha session has expired. Please reconnect.",
+    ai_personalization_failed: "Couldn't personalize your dashboard right now. Showing the default view.",
   };
   const errorMsg = errorParam ? (errorMessages[errorParam] ?? "Something went wrong. Please try again.") : undefined;
 
@@ -506,6 +603,7 @@ export default async function DashboardPage({
         kiteUserName={tokenRow.kite_user_name}
         kiteUserId={tokenRow.kite_user_id}
         fetchedAt={tradingRow.fetched_at as string}
+        widgets={params.widgets}
       />
     </main>
   );
