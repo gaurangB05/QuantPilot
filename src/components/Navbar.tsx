@@ -63,6 +63,10 @@ export default function Navbar() {
             className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-lg hover:bg-[#F8FAFC] transition-all duration-150">
             Log in
           </a>
+          <a href="/signup"
+            className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-lg hover:bg-[#F8FAFC] transition-all duration-150">
+            Sign up
+          </a>
           <a href="/request-access"
             className="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-all duration-150"
             style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)", boxShadow: "0 1px 6px rgba(37,99,235,0.28)" }}
@@ -103,6 +107,10 @@ export default function Navbar() {
                 <a href="/login" onClick={() => setMobileOpen(false)}
                   className="px-4 py-3 text-sm font-medium text-[#374151] hover:text-[#111827] rounded-xl hover:bg-[#F8FAFC] transition-colors text-center">
                   Log in
+                </a>
+                <a href="/signup" onClick={() => setMobileOpen(false)}
+                  className="px-4 py-3 text-sm font-medium text-[#374151] hover:text-[#111827] rounded-xl hover:bg-[#F8FAFC] transition-colors text-center">
+                  Sign up
                 </a>
                 <a href="/request-access" onClick={() => setMobileOpen(false)}
                   className="px-4 py-3 text-sm font-semibold text-white rounded-xl text-center"
