@@ -12,6 +12,7 @@ import {
 } from "@/lib/kite";
 import { generateDashboardConfig } from "@/lib/ai";
 import Navbar from "@/components/Navbar";
+import SubmitButton from "@/components/SubmitButton";
 
 // ─── Server actions ────────────────────────────────────────────────────────────
 
@@ -172,11 +173,12 @@ function NotConnected({ errorMsg }: { errorMsg?: string }) {
         )}
 
         <form action={reconnectKite}>
-          <button type="submit"
+          <SubmitButton
+            pendingText="Connecting…"
             className="w-full py-3 rounded-xl text-[14px] font-semibold text-white cursor-pointer"
             style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)", boxShadow: "0 4px 16px rgba(37,99,235,0.28)" }}>
             Connect Zerodha →
-          </button>
+          </SubmitButton>
         </form>
 
         <p className="text-[11.5px] text-[#9CA3AF] mt-4">
@@ -209,11 +211,12 @@ function TokenExpired({ kiteUserName }: { kiteUserName?: string }) {
         </p>
 
         <form action={reconnectKite}>
-          <button type="submit"
+          <SubmitButton
+            pendingText="Connecting…"
             className="w-full py-3 rounded-xl text-[14px] font-semibold text-white cursor-pointer"
             style={{ background: "linear-gradient(135deg, #D97706, #F59E0B)" }}>
             Reconnect Zerodha →
-          </button>
+          </SubmitButton>
         </form>
       </div>
     </div>
