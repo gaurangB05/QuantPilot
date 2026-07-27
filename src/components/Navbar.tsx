@@ -18,7 +18,7 @@ function LogoMark() {
   );
 }
 
-export default function Navbar() {
+export default function Navbar({ showAuthLinks = true }: { showAuthLinks?: boolean }) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -58,24 +58,26 @@ export default function Navbar() {
         </div>
 
         {/* Desktop CTAs */}
-        <div className="hidden md:flex items-center gap-3">
-          <a href="/login"
-            className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-lg hover:bg-[#F8FAFC] transition-all duration-150">
-            Log in
-          </a>
-          <a href="/signup"
-            className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-lg hover:bg-[#F8FAFC] transition-all duration-150">
-            Sign up
-          </a>
-          <a href="/request-access"
-            className="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-all duration-150"
-            style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)", boxShadow: "0 1px 6px rgba(37,99,235,0.28)" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "linear-gradient(135deg, #1D4ED8, #2563EB)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "linear-gradient(135deg, #2563EB, #60A5FA)"; }}
-          >
-            Get Early Access
-          </a>
-        </div>
+        {showAuthLinks && (
+          <div className="hidden md:flex items-center gap-3">
+            <a href="/login"
+              className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-lg hover:bg-[#F8FAFC] transition-all duration-150">
+              Log in
+            </a>
+            <a href="/signup"
+              className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-lg hover:bg-[#F8FAFC] transition-all duration-150">
+              Sign up
+            </a>
+            <a href="/request-access"
+              className="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-all duration-150"
+              style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)", boxShadow: "0 1px 6px rgba(37,99,235,0.28)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "linear-gradient(135deg, #1D4ED8, #2563EB)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "linear-gradient(135deg, #2563EB, #60A5FA)"; }}
+            >
+              Get Early Access
+            </a>
+          </div>
+        )}
 
         {/* Mobile hamburger */}
         <button onClick={() => setMobileOpen(!mobileOpen)}
@@ -103,21 +105,23 @@ export default function Navbar() {
                   {link.label}
                 </a>
               ))}
-              <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-[#e5e7eb]">
-                <a href="/login" onClick={() => setMobileOpen(false)}
-                  className="px-4 py-3 text-sm font-medium text-[#374151] hover:text-[#111827] rounded-xl hover:bg-[#F8FAFC] transition-colors text-center">
-                  Log in
-                </a>
-                <a href="/signup" onClick={() => setMobileOpen(false)}
-                  className="px-4 py-3 text-sm font-medium text-[#374151] hover:text-[#111827] rounded-xl hover:bg-[#F8FAFC] transition-colors text-center">
-                  Sign up
-                </a>
-                <a href="/request-access" onClick={() => setMobileOpen(false)}
-                  className="px-4 py-3 text-sm font-semibold text-white rounded-xl text-center"
-                  style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)" }}>
-                  Get Early Access
-                </a>
-              </div>
+              {showAuthLinks && (
+                <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-[#e5e7eb]">
+                  <a href="/login" onClick={() => setMobileOpen(false)}
+                    className="px-4 py-3 text-sm font-medium text-[#374151] hover:text-[#111827] rounded-xl hover:bg-[#F8FAFC] transition-colors text-center">
+                    Log in
+                  </a>
+                  <a href="/signup" onClick={() => setMobileOpen(false)}
+                    className="px-4 py-3 text-sm font-medium text-[#374151] hover:text-[#111827] rounded-xl hover:bg-[#F8FAFC] transition-colors text-center">
+                    Sign up
+                  </a>
+                  <a href="/request-access" onClick={() => setMobileOpen(false)}
+                    className="px-4 py-3 text-sm font-semibold text-white rounded-xl text-center"
+                    style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)" }}>
+                    Get Early Access
+                  </a>
+                </div>
+              )}
             </div>
           </motion.div>
         )}

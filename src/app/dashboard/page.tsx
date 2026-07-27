@@ -556,7 +556,7 @@ export default async function DashboardPage({
   if (!tokenRow) {
     return (
       <main className="min-h-screen bg-white">
-        <Navbar />
+        <Navbar showAuthLinks={false} />
         <NotConnected errorMsg={errorMsg} />
       </main>
     );
@@ -566,7 +566,7 @@ export default async function DashboardPage({
   if (errorParam === "kite_token_expired") {
     return (
       <main className="min-h-screen bg-white">
-        <Navbar />
+        <Navbar showAuthLinks={false} />
         <TokenExpired kiteUserName={tokenRow.kite_user_name} />
       </main>
     );
@@ -583,7 +583,7 @@ export default async function DashboardPage({
   if (!tradingRow) {
     return (
       <main className="min-h-screen bg-white">
-        <Navbar />
+        <Navbar showAuthLinks={false} />
         <TokenExpired kiteUserName={tokenRow.kite_user_name} />
       </main>
     );
@@ -600,7 +600,7 @@ export default async function DashboardPage({
 
   return (
     <main className="min-h-screen bg-white">
-      <Navbar />
+      <Navbar showAuthLinks={false} />
       <PortfolioView
         data={portfolioData}
         kiteUserName={tokenRow.kite_user_name}
