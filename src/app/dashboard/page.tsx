@@ -12,7 +12,7 @@ import {
 } from "@/lib/kite";
 import { generateDashboardConfig } from "@/lib/ai";
 import Navbar from "@/components/Navbar";
-import SubmitButton from "@/components/SubmitButton";
+import SubmitButton, { PendingOverlay } from "@/components/SubmitButton";
 
 // ─── Server actions ────────────────────────────────────────────────────────────
 
@@ -294,11 +294,13 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets }: {
             </button>
           </form>
           <form action={signOut}>
-            <button type="submit"
+            <SubmitButton
+              pendingText="Signing out…"
               className="px-4 py-2 rounded-xl text-[12.5px] font-medium text-[#DC2626] cursor-pointer"
               style={{ border: "1px solid #FECACA", background: "#FEF2F2" }}>
               Sign out
-            </button>
+            </SubmitButton>
+            <PendingOverlay text="Signing out…" />
           </form>
         </div>
       </div>
