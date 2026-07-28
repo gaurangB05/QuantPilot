@@ -27,6 +27,7 @@ export default function SignupPage() {
       password: form.password,
       options: {
         data: { full_name: form.name },
+        emailRedirectTo: `${window.location.origin}/welcome`,
       },
     });
 
