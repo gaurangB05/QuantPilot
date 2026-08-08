@@ -420,25 +420,44 @@ async function authorizeAndCaptureRequestToken(
   // surfaces with an actionable message well before the 45s ceiling, rather than
   // a bare timeout. This does not extend REDIRECT_TIMEOUT_MS — it's a faster exit
   // within the same budget, not a longer one.
+  const isBareKiteHome = (url: string) => /^https:\/\/kite\.zerodha\.com\/?(\?.*)?$/.test(url);
   let settled = false;
   const stuckOnHomeWatcher = (async () => {
-    let stuckStreak = 0;
+    let confirmedBlankStreak = 0;
     while (!settled) {
-      await page.waitForTimeout(1000);
-      if (settled) return;
-      const url = page.url();
-      if (/^https:\/\/kite\.zerodha\.com\/?(\?.*)?$/.test(url)) {
-        stuckStreak++;
-        if (stuckStreak >= 4) {
-          const pageError = await readPageError(page);
-          throw new Error(
-            pageError
-              ? `Zerodha says: "${pageError}"`
-              : "Landed on Kite's own home page instead of redirecting back to the app — the TOTP code was likely rejected, or this app isn't authorized for this account."
-          );
-        }
-      } else {
-        stuckStreak = 0;
+      await page.waitForTimeout(1200);
+      if (settled || !isBareKiteHome(page.url())) {
+        confirmedBlankStreak = 0;
+        continue;
+      }
+
+      // Landed on Kite's bare home URL — but Zerodha's app is a client-side SPA:
+      // it may still be reading the OAuth session context and about to route
+      // itself onward to /connect/authorize (confirmed this route exists in the
+      // live JS bundle) or straight to REDIRECT_URL. A blank/loading DOM at this
+      // instant is not proof of failure — give any pending redirect real time to
+      // land before concluding anything, and only count it once real rendered
+      // content is visible and the URL is still stuck on bare home.
+      await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
+      if (settled || !isBareKiteHome(page.url())) {
+        confirmedBlankStreak = 0;
+        continue;
+      }
+
+      const text = await page.locator("body").innerText().catch(() => "");
+      if (!text.trim()) {
+        confirmedBlankStreak = 0; // still rendering — not evidence, keep watching
+        continue;
+      }
+
+      confirmedBlankStreak++;
+      if (confirmedBlankStreak >= 2) {
+        const pageError = await readPageError(page);
+        throw new Error(
+          pageError
+            ? `Zerodha says: "${pageError}"`
+            : "Landed on Kite's own home page instead of redirecting back to the app — the TOTP code was likely rejected, or this app isn't authorized for this account."
+        );
       }
     }
   })();
