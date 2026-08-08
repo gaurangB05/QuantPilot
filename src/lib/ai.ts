@@ -92,6 +92,7 @@ async function callGemini(prompt: string): Promise<string> {
     }
   );
 
+  if (res.status === 429) throw new Error("RATE_LIMITED");
   if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
   const data = await res.json();
   return data.candidates[0].content.parts[0].text;
@@ -113,5 +114,66 @@ export async function generateDashboardConfig(
     case "anthropic":
     default:
       return parseWidgets(await callAnthropic(prompt));
+  }
+}
+
+// ─── Portfolio chat ─────────────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+function buildChatPrompt(tradingData: KitePortfolioData, history: ChatMessage[], message: string): string {
+  const portfolioValue = tradingData.holdings.reduce((sum, h) => sum + h.last_price * h.quantity, 0);
+  const pnl =
+    tradingData.holdings.reduce((sum, h) => sum + h.pnl, 0) +
+    tradingData.positions.net.reduce((sum, p) => sum + p.pnl, 0);
+
+  const historyText = history
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+    .join("\n");
+
+  return `You are a portfolio assistant embedded in a trading dashboard. You can only discuss:
+- The authenticated user's own trading data (given below)
+- General trading/market education (explaining concepts, terms, how things work)
+
+Hard rules:
+- Never give a specific buy/sell/hold recommendation on any stock, or personalized investment advice. You are not a registered investment advisor.
+- If the user's message is asking for that kind of advice, politely decline in one sentence and offer to analyze their existing data instead — do not answer the underlying question.
+- Keep replies short (2-4 sentences) unless the user explicitly asks for more detail.
+- Base analysis only on the data below — never invent figures.
+
+Portfolio Value: ${portfolioValue}
+Total P&L: ${pnl}
+Margins: ${JSON.stringify(tradingData.margins)}
+Holdings: ${JSON.stringify(tradingData.holdings)}
+Positions: ${JSON.stringify(tradingData.positions)}
+Orders: ${JSON.stringify(tradingData.orders)}
+Trades: ${JSON.stringify(tradingData.trades)}
+
+Conversation so far:
+${historyText || "(none)"}
+
+User: ${message}
+
+Respond with plain text only — no markdown, no JSON.`;
+}
+
+export async function generateChatReply(
+  tradingData: KitePortfolioData,
+  history: ChatMessage[],
+  message: string
+): Promise<string> {
+  const prompt = buildChatPrompt(tradingData, history, message);
+
+  switch (process.env.AI_PROVIDER) {
+    case "openai":
+      return callOpenAI(prompt);
+    case "gemini":
+      return callGemini(prompt);
+    case "anthropic":
+    default:
+      return callAnthropic(prompt);
   }
 }

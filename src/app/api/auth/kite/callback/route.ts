@@ -19,28 +19,41 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/request-access`);
   }
 
-  try {
-    const { access_token, kite_user_id, kite_user_name } = await exchangeToken(requestToken);
+  // This is a re-authentication (daily session refresh) for an already-onboarded
+  // user — their api_key/api_secret were set during the initial /api/kite-onboard
+  // automation and must already exist.
+  const { data: existing } = await supabase
+    .from("user_kite_tokens")
+    .select("api_key, api_secret")
+    .eq("user_id", user.id)
+    .single();
 
-    // Upsert — handles both first-time connect and reconnection
+  if (!existing?.api_key || !existing?.api_secret) {
+    return NextResponse.redirect(`${origin}/dashboard?error=kite_not_onboarded`);
+  }
+
+  try {
+    const { access_token, kite_user_id, kite_user_name } = await exchangeToken(
+      requestToken,
+      existing.api_key,
+      existing.api_secret
+    );
+
     const { error } = await supabase
       .from("user_kite_tokens")
-      .upsert(
-        {
-          user_id: user.id,
-          access_token,
-          kite_user_id,
-          kite_user_name,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" }
-      );
+      .update({
+        access_token,
+        kite_user_id,
+        kite_user_name,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", user.id);
 
     if (error) throw new Error(error.message);
 
     // Fetch all trading data and persist — non-blocking; user can refresh if this fails
     try {
-      const tradingData = await fetchPortfolioData(access_token);
+      const tradingData = await fetchPortfolioData(access_token, existing.api_key);
       await supabase.from("user_trading_data").upsert(
         {
           user_id: user.id,

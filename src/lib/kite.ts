@@ -5,19 +5,19 @@ const KITE_VERSION = "3";
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-export function getKiteLoginURL(): string {
-  const apiKey = process.env.KITE_API_KEY!;
+export function getKiteLoginURL(apiKey: string): string {
   return `https://kite.zerodha.com/connect/login?v=${KITE_VERSION}&api_key=${apiKey}`;
 }
 
-export async function exchangeToken(requestToken: string): Promise<{
+export async function exchangeToken(
+  requestToken: string,
+  apiKey: string,
+  apiSecret: string
+): Promise<{
   access_token: string;
   kite_user_id: string;
   kite_user_name: string;
 }> {
-  const apiKey = process.env.KITE_API_KEY!;
-  const apiSecret = process.env.KITE_API_SECRET!;
-
   const checksum = createHash("sha256")
     .update(apiKey + requestToken + apiSecret)
     .digest("hex");
@@ -49,11 +49,11 @@ export async function exchangeToken(requestToken: string): Promise<{
 
 // ─── Kite API helper ──────────────────────────────────────────────────────────
 
-async function kiteGet<T>(path: string, accessToken: string): Promise<T> {
+async function kiteGet<T>(path: string, accessToken: string, apiKey: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: {
       "X-Kite-Version": KITE_VERSION,
-      Authorization: `token ${process.env.KITE_API_KEY!}:${accessToken}`,
+      Authorization: `token ${apiKey}:${accessToken}`,
     },
     next: { revalidate: 0 }, // always fresh — trading data must not be stale
   });
@@ -189,14 +189,14 @@ export interface KitePortfolioData {
 
 // ─── Fetch all trading data in parallel ───────────────────────────────────────
 
-export async function fetchPortfolioData(accessToken: string): Promise<KitePortfolioData> {
+export async function fetchPortfolioData(accessToken: string, apiKey: string): Promise<KitePortfolioData> {
   const [profile, margins, positionsRaw, holdings, orders, trades] = await Promise.all([
-    kiteGet<KiteProfile>("/user/profile", accessToken),
-    kiteGet<KiteMargins>("/user/margins", accessToken),
-    kiteGet<{ net: KitePosition[]; day: KitePosition[] }>("/portfolio/positions", accessToken),
-    kiteGet<KiteHolding[]>("/portfolio/holdings", accessToken),
-    kiteGet<KiteOrder[]>("/orders", accessToken),
-    kiteGet<KiteTrade[]>("/trades", accessToken),
+    kiteGet<KiteProfile>("/user/profile", accessToken, apiKey),
+    kiteGet<KiteMargins>("/user/margins", accessToken, apiKey),
+    kiteGet<{ net: KitePosition[]; day: KitePosition[] }>("/portfolio/positions", accessToken, apiKey),
+    kiteGet<KiteHolding[]>("/portfolio/holdings", accessToken, apiKey),
+    kiteGet<KiteOrder[]>("/orders", accessToken, apiKey),
+    kiteGet<KiteTrade[]>("/trades", accessToken, apiKey),
   ]);
 
   return { profile, margins, positions: positionsRaw, holdings, orders, trades };

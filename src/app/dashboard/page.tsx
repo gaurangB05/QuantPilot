@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
   fetchPortfolioData,
@@ -13,13 +14,17 @@ import {
 import { generateDashboardConfig } from "@/lib/ai";
 import Navbar from "@/components/Navbar";
 import SubmitButton, { PendingOverlay } from "@/components/SubmitButton";
+import ChatWidget from "@/components/ChatWidget";
+import ConnectZerodhaModal from "@/components/ConnectZerodhaModal";
 
 // ─── Server actions ────────────────────────────────────────────────────────────
 
 async function signOut() {
   "use server";
   const supabase = await createClient();
-  await supabase.auth.signOut();
+  // "local" scope only clears this session — "global" (the default) revokes
+  // every session for the user, an extra round trip we don't need here.
+  await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }
 
@@ -36,14 +41,14 @@ async function refreshData() {
 
   const { data: tokenRow } = await supabase
     .from("user_kite_tokens")
-    .select("access_token")
+    .select("access_token, api_key")
     .eq("user_id", user.id)
     .single();
 
-  if (!tokenRow) redirect("/dashboard");
+  if (!tokenRow?.api_key) redirect("/dashboard");
 
   try {
-    const tradingData = await fetchPortfolioData(tokenRow.access_token);
+    const tradingData = await fetchPortfolioData(tokenRow.access_token, tokenRow.api_key);
     await supabase.from("user_trading_data").upsert(
       {
         user_id: user.id,
@@ -61,6 +66,7 @@ async function refreshData() {
     redirect("/dashboard?error=kite_token_expired");
   }
 
+  revalidatePath("/dashboard");
   redirect("/dashboard");
 }
 
@@ -95,8 +101,10 @@ async function personalizeDashboard(formData: FormData) {
       prompt
     );
     widgets = config.widgets;
-  } catch {
-    redirect("/dashboard?error=ai_personalization_failed");
+  } catch (err) {
+    console.error("[personalizeDashboard]", err);
+    const rateLimited = err instanceof Error && err.message === "RATE_LIMITED";
+    redirect(`/dashboard?error=${rateLimited ? "ai_rate_limited" : "ai_personalization_failed"}`);
   }
 
   redirect(`/dashboard?widgets=${encodeURIComponent(widgets.join(","))}`);
@@ -172,14 +180,7 @@ function NotConnected({ errorMsg }: { errorMsg?: string }) {
           </div>
         )}
 
-        <form action={reconnectKite}>
-          <SubmitButton
-            pendingText="Connecting…"
-            className="w-full py-3 rounded-xl text-[14px] font-semibold text-white cursor-pointer"
-            style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)", boxShadow: "0 4px 16px rgba(37,99,235,0.28)" }}>
-            Connect Zerodha →
-          </SubmitButton>
-        </form>
+        <ConnectZerodhaModal />
 
         <p className="text-[11.5px] text-[#9CA3AF] mt-4">
           You&apos;ll be redirected to Zerodha to authorise access. We only read your data — we never trade on your behalf.
@@ -225,12 +226,13 @@ function TokenExpired({ kiteUserName }: { kiteUserName?: string }) {
 
 // ─── Portfolio view ───────────────────────────────────────────────────────────
 
-function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets }: {
+function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, errorMsg }: {
   data: KitePortfolioData;
   kiteUserName: string;
   kiteUserId: string;
   fetchedAt: string;
   widgets?: string;
+  errorMsg?: string;
 }) {
   const equity = data.margins.equity;
   const netPositions = data.positions.net.filter((p) => p.quantity !== 0);
@@ -244,6 +246,12 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets }: {
     { label: "Holdings Value", value: fmt(holdingsValue), sub: `${data.holdings.length} stocks`, pnl: totalHoldingPnl },
     { label: "Positions P&L", value: fmt(Math.abs(totalPositionPnl)), sub: `${netPositions.length} open`, pnl: totalPositionPnl },
   ];
+
+  // Smart Risk Alert — warn when available margin buffer is thin, or absent entirely.
+  const LOW_MARGIN_THRESHOLD_PCT = 20;
+  const noFundsAlert = equity.net <= 0;
+  const marginAvailablePct = equity.net > 0 ? (equity.available.live_balance / equity.net) * 100 : null;
+  const lowMarginAlert = marginAvailablePct !== null && marginAvailablePct < LOW_MARGIN_THRESHOLD_PCT;
 
   const fetchedLabel = new Intl.DateTimeFormat("en-IN", {
     dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata",
@@ -263,6 +271,26 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets }: {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
 
+      {errorMsg && (
+        <div className="mb-5 px-4 py-3 rounded-xl text-[12.5px]"
+          style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626" }}>
+          {errorMsg}
+        </div>
+      )}
+
+      {noFundsAlert ? (
+        <div className="mb-5 px-4 py-3 rounded-xl text-[12.5px]"
+          style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E" }}>
+          <strong>No funds available</strong> — your net margin is {fmt(equity.net)}. Add funds to your Zerodha account to start trading.
+        </div>
+      ) : lowMarginAlert && (
+        <div className="mb-5 px-4 py-3 rounded-xl text-[12.5px]"
+          style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E" }}>
+          <strong>Low margin buffer</strong> — only {marginAvailablePct!.toFixed(1)}% of your net margin is available
+          ({fmt(equity.available.live_balance)} of {fmt(equity.net)}). Consider reducing exposure or adding funds.
+        </div>
+      )}
+
       {/* Page header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -280,18 +308,20 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets }: {
               className="px-3 py-2 rounded-xl text-[12.5px] text-[#111827] w-56"
               style={{ border: "1px solid #E5E7EB", background: "white" }}
             />
-            <button type="submit"
+            <SubmitButton
+              pendingText="Personalizing…"
               className="px-4 py-2 rounded-xl text-[12.5px] font-medium text-white cursor-pointer"
               style={{ background: "#2563EB" }}>
               Personalize
-            </button>
+            </SubmitButton>
           </form>
           <form action={refreshData}>
-            <button type="submit"
+            <SubmitButton
+              pendingText="Refreshing…"
               className="px-4 py-2 rounded-xl text-[12.5px] font-medium text-[#6B7280] cursor-pointer"
               style={{ border: "1px solid #E5E7EB", background: "white" }}>
               Refresh data
-            </button>
+            </SubmitButton>
           </form>
           <form action={signOut}>
             <SubmitButton
@@ -545,6 +575,8 @@ export default async function DashboardPage({
     kite_login_cancelled: "Login was cancelled. Connect your account to continue.",
     kite_token_expired: "Your Zerodha session has expired. Please reconnect.",
     ai_personalization_failed: "Couldn't personalize your dashboard right now. Showing the default view.",
+    ai_rate_limited: "Personalization is briefly rate-limited (free AI tier) — wait a few seconds and try again.",
+    kite_not_onboarded: "Your Zerodha connection wasn't fully set up. Please connect again.",
   };
   const errorMsg = errorParam ? (errorMessages[errorParam] ?? "Something went wrong. Please try again.") : undefined;
 
@@ -609,7 +641,9 @@ export default async function DashboardPage({
         kiteUserId={tokenRow.kite_user_id}
         fetchedAt={tradingRow.fetched_at as string}
         widgets={params.widgets}
+        errorMsg={errorParam !== "kite_token_expired" ? errorMsg : undefined}
       />
+      <ChatWidget />
     </main>
   );
 }
