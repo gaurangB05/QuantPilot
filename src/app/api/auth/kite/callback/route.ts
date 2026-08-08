@@ -19,9 +19,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/request-access`);
   }
 
-  // This is a re-authentication (daily session refresh) for an already-onboarded
-  // user — their api_key/api_secret were set during the initial /api/kite-onboard
-  // automation and must already exist.
+  // Used for both first-time connections and daily re-auth — either way the
+  // api_key/api_secret must already exist, set by /api/kite-onboard/connect
+  // (or the manual BYOK route) before the user was sent to Zerodha's login page.
   const { data: existing } = await supabase
     .from("user_kite_tokens")
     .select("api_key, api_secret")

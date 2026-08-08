@@ -4,11 +4,10 @@ import { createKiteApp } from "@/lib/kite-automation";
 
 export const maxDuration = 60;
 
-// Phase 1 of onboarding: sets up a throwaway developer-console account and
-// creates the Personal Kite Connect app. Doesn't touch the user's real Zerodha
-// credentials at all — those are only needed in the fast, time-sensitive
-// authorize phase (/api/kite-onboard/authorize), kept separate so a live TOTP
-// code isn't stale by the time it's actually used.
+// Onboarding automation: sets up a throwaway developer-console account and
+// creates the Personal Kite Connect app for this user. Never touches the user's
+// real Zerodha password/TOTP — those are entered directly on kite.zerodha.com
+// right after this, via the browser redirect to /api/auth/kite/login.
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -26,7 +25,8 @@ export async function POST(request: NextRequest) {
       appName: `QuantPilot-${user.id.slice(0, 8)}`,
     });
 
-    // access_token/kite_user_id/kite_user_name get filled in by the authorize phase.
+    // access_token/kite_user_id/kite_user_name get filled in by the callback once
+    // the user completes the real Kite login redirect right after this.
     const { error } = await supabase.from("user_kite_tokens").upsert(
       {
         user_id: user.id,

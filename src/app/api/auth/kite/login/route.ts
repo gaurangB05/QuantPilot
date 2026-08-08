@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getKiteLoginURL } from "@/lib/kite";
 
-// Re-authenticates an already-onboarded user with their own Kite Connect app
-// (daily session refresh). First-time connections go through the /api/kite-onboard
-// automation flow instead, since that's what creates the per-user app.
+// Sends the user to their own Kite Connect app's real login page. Used both for
+// first-time connections (right after /api/kite-onboard/connect provisions the
+// app) and daily session refreshes — either way, the password/TOTP are entered
+// directly on kite.zerodha.com and never reach this server.
 export async function GET(request: NextRequest) {
   const { origin } = new URL(request.url);
   const supabase = await createClient();

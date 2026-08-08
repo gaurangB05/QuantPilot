@@ -90,18 +90,6 @@ async function submitRobustly(page: Page, lastField: Locator, isDone: () => Prom
   throw new Error("Could not submit the form — no submission method worked.");
 }
 
-// Fills a field via realistic keystrokes (not a raw DOM value set) and verifies the
-// resulting value matches — catches cases where a framework silently rejects .fill().
-async function typeAndVerify(field: Locator, value: string, label: string) {
-  await field.click();
-  await field.fill("");
-  await field.pressSequentially(value, { delay: 25 });
-  const actual = await field.inputValue();
-  if (actual !== value) {
-    throw new Error(`${label} field shows "${actual}" instead of "${value}" after typing.`);
-  }
-}
-
 function randomString(length: number): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
   let out = "";
@@ -369,164 +357,12 @@ async function createPersonalKiteApp(
   return { apiKey: apiKey.trim(), apiSecret: apiSecret.trim() };
 }
 
-// ─── Step 3: authorize the app with the user's REAL Zerodha login ─────────────
-// This is the actual broker login (kite.zerodha.com) — different system from the
-// developer console, and where the user's real credentials are actually needed.
-
-// Zerodha is a first-party redirect chain: login -> TOTP -> (optional consent) ->
-// redirect to REDIRECT_URL with request_token. The listener below is armed BEFORE
-// navigation is triggered on purpose — page.waitForURL only inspects future
-// navigation events (plus whatever the current URL already is at call time), so if
-// it were attached after the login/TOTP/consent actions instead, a fast redirect
-// that already happened in between could be missed entirely. This part was already
-// correct; the actual bug was downstream (see below).
-async function authorizeAndCaptureRequestToken(
-  page: Page,
-  apiKey: string,
-  creds: { zerodhaClientId: string; password: string; totpCode: string }
-): Promise<string> {
-  const REDIRECT_TIMEOUT_MS = 45000;
-  const redirectPromise = page.waitForURL((url) => url.href.startsWith(REDIRECT_URL), {
-    timeout: REDIRECT_TIMEOUT_MS,
-    waitUntil: "commit",
-  });
-  await page.goto(`https://kite.zerodha.com/connect/login?v=3&api_key=${apiKey}`, {
-    waitUntil: "commit",
-  });
-
-  // If a login form is showing (not already authenticated), complete it. Confirmed
-  // field ids against the live page: #userid, #password.
-  const clientIdEl = page.locator("#userid, input[type=\"text\"]").first();
-  const isLoginForm = await clientIdEl.isVisible({ timeout: 8000 }).catch(() => false);
-
-  await withDiagnostics(page, "authorize: check login form", async () => {
-    if (!isLoginForm) return;
-
-    await typeAndVerify(clientIdEl, creds.zerodhaClientId, "Client ID");
-
-    const passwordEl = page.locator("#password, input[type=\"password\"]").first();
-    // 12s, not 6s: confirmed live that Zerodha only shows an Altcha CAPTCHA (which
-    // this flow can't solve) after a submission doesn't cleanly register — and a
-    // too-short patience window here is exactly what causes submitRobustly to send
-    // a second real password submission while the first (successful) one is still
-    // in flight, which is itself what triggers that CAPTCHA gate.
-    const passwordGone = () =>
-      page.waitForFunction(
-        () => document.querySelectorAll('input[type="password"]').length === 0,
-        null,
-        { timeout: 12000 }
-      ).then(() => true).catch(() => false);
-
-    await passwordEl.fill(creds.password);
-    try {
-      await submitRobustly(page, passwordEl, passwordGone);
-    } catch (err) {
-      const pageError = await readPageError(page);
-      if (pageError) throw new Error(`Zerodha says: "${pageError}"`);
-      throw err;
-    }
-
-    await fillAndSubmitTotp(page, creds.totpCode, [clientIdEl]);
-  });
-
-  // Explicit consent screen, if Zerodha shows one (not every app gets one — many
-  // Personal apps redirect straight through after TOTP). Match by wording, not by
-  // tag: Zerodha is an Indian company and consistently uses British spelling
-  // ("Authorise"), which a US-spelling-only match would silently never find, and
-  // its submit controls are as often input[type=submit] as <button>. Playwright's
-  // hasText filter reads an input[type=submit]'s `value` as its text, so one
-  // locator + one bounded check covers all of it without risking a click on some
-  // unrelated visible submit control (e.g. a search box) if no consent screen
-  // exists at all.
-  const authorizeControl = page
-    .locator('button, input[type="submit"], a, [role="button"]')
-    .filter({ hasText: /authori[sz]e/i })
-    .first();
-  const clickedAuthorize = await authorizeControl
-    .isVisible({ timeout: 4000 })
-    .catch(() => false);
-  if (clickedAuthorize) {
-    await authorizeControl.click().catch(() => {});
-  }
-
-  // Failure here has historically shown up as: no redirect ever arrives, and the
-  // browser is just sitting on Kite's own home page (login "succeeded" as a normal
-  // Kite Web session, but the OAuth continuation never fired — usually a rejected
-  // TOTP or an app that isn't authorized for this account). Watch for that
-  // specific stuck state concurrently with the redirect wait so a real failure
-  // surfaces with an actionable message well before the 45s ceiling, rather than
-  // a bare timeout. This does not extend REDIRECT_TIMEOUT_MS — it's a faster exit
-  // within the same budget, not a longer one.
-  const isBareKiteHome = (url: string) => /^https:\/\/kite\.zerodha\.com\/?(\?.*)?$/.test(url);
-  let settled = false;
-  const stuckOnHomeWatcher = (async () => {
-    let confirmedBlankStreak = 0;
-    while (!settled) {
-      await page.waitForTimeout(1200);
-      if (settled || !isBareKiteHome(page.url())) {
-        confirmedBlankStreak = 0;
-        continue;
-      }
-
-      // Landed on Kite's bare home URL — but Zerodha's app is a client-side SPA:
-      // it may still be reading the OAuth session context and about to route
-      // itself onward to /connect/authorize (confirmed this route exists in the
-      // live JS bundle) or straight to REDIRECT_URL. A blank/loading DOM at this
-      // instant is not proof of failure — give any pending redirect real time to
-      // land before concluding anything, and only count it once real rendered
-      // content is visible and the URL is still stuck on bare home.
-      await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
-      if (settled || !isBareKiteHome(page.url())) {
-        confirmedBlankStreak = 0;
-        continue;
-      }
-
-      const text = await page.locator("body").innerText().catch(() => "");
-      if (!text.trim()) {
-        confirmedBlankStreak = 0; // still rendering — not evidence, keep watching
-        continue;
-      }
-
-      confirmedBlankStreak++;
-      if (confirmedBlankStreak >= 2) {
-        const pageError = await readPageError(page);
-        throw new Error(
-          pageError
-            ? `Zerodha says: "${pageError}"`
-            : "Landed on Kite's own home page instead of redirecting back to the app — the TOTP code was likely rejected, or this app isn't authorized for this account."
-        );
-      }
-    }
-  })();
-
-  try {
-    await withDiagnostics(page, "authorize: wait for redirect", () =>
-      Promise.race([redirectPromise, stuckOnHomeWatcher])
-    );
-  } catch (err) {
-    const bodyText = await page.locator("body").innerText().catch(() => "(unreadable)");
-    throw new Error(
-      `${err instanceof Error ? err.message : String(err)} — clickedAuthorize=${clickedAuthorize}, page text: ${bodyText.slice(0, 500)}`
-    );
-  } finally {
-    settled = true;
-  }
-
-  const url = new URL(page.url());
-  const requestToken = url.searchParams.get("request_token");
-  const status = url.searchParams.get("status");
-  if (status !== "success" || !requestToken) {
-    throw new Error("Zerodha authorization did not complete successfully.");
-  }
-  return requestToken;
-}
-
 // ─── Orchestration ──────────────────────────────────────────────────────────────
-// Split into two independent phases because the second needs the user's live,
-// ~30s-lived TOTP code — bundling it with the (slower) signup+create-app steps
-// meant the code was reliably expired by the time it was actually used. Each
-// phase launches its own browser; the only thing passed between them is the
-// apiKey/apiSecret (persisted by the caller in between, e.g. in the database).
+// This creates the app only — it never sees the user's real Zerodha password or
+// TOTP. Authorizing the app (the actual broker login) happens in the user's own
+// browser via the real Kite Connect OAuth redirect: /api/auth/kite/login sends
+// them to kite.zerodha.com directly, and /api/auth/kite/callback picks up the
+// request_token Zerodha sends back. That's the only real-user authentication path.
 
 export async function createKiteApp(opts: {
   zerodhaClientId: string;
@@ -539,24 +375,6 @@ export async function createKiteApp(opts: {
 
     await signupDeveloperAccount(page);
     return await createPersonalKiteApp(page, opts);
-  } finally {
-    await browser.close().catch(() => {});
-  }
-}
-
-export async function authorizeKiteApp(opts: {
-  apiKey: string;
-  zerodhaClientId: string;
-  password: string;
-  totpCode: string;
-}): Promise<{ requestToken: string }> {
-  const browser = await launchBrowser();
-  try {
-    const page = await newStealthPage(browser);
-    await speedUpPage(page);
-
-    const requestToken = await authorizeAndCaptureRequestToken(page, opts.apiKey, opts);
-    return { requestToken };
   } finally {
     await browser.close().catch(() => {});
   }
