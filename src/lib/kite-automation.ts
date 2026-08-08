@@ -352,21 +352,25 @@ async function authorizeAndCaptureRequestToken(
   apiKey: string,
   creds: { zerodhaClientId: string; password: string; totpCode: string }
 ): Promise<string> {
-  const redirectPromise = page.waitForURL((url) => url.href.startsWith(REDIRECT_URL), { timeout: 45000 });
+  const redirectPromise = page.waitForURL((url) => url.href.startsWith(REDIRECT_URL), {
+    timeout: 45000,
+    waitUntil: "commit",
+  });
   await page.goto(`https://kite.zerodha.com/connect/login?v=3&api_key=${apiKey}`, {
     waitUntil: "commit",
   });
 
-  // If a login form is showing (not already authenticated), complete it.
-  const clientIdEl = page.locator('input[type="text"], input[type="tel"]').first();
+  // If a login form is showing (not already authenticated), complete it. Confirmed
+  // field ids against the live page: #userid, #password.
+  const clientIdEl = page.locator("#userid, input[type=\"text\"]").first();
   const isLoginForm = await clientIdEl.isVisible({ timeout: 8000 }).catch(() => false);
 
-  if (isLoginForm) {
-    await withDiagnostics(page, "authorize: fill client id", () =>
-      typeAndVerify(clientIdEl, creds.zerodhaClientId, "Client ID")
-    );
+  await withDiagnostics(page, "authorize: check login form", async () => {
+    if (!isLoginForm) return;
 
-    const passwordEl = page.locator('input[type="password"]').first();
+    await typeAndVerify(clientIdEl, creds.zerodhaClientId, "Client ID");
+
+    const passwordEl = page.locator("#password, input[type=\"password\"]").first();
     const passwordGone = () =>
       page.waitForFunction(
         () => document.querySelectorAll('input[type="password"]').length === 0,
@@ -374,21 +378,17 @@ async function authorizeAndCaptureRequestToken(
         { timeout: 6000 }
       ).then(() => true).catch(() => false);
 
-    await withDiagnostics(page, "authorize: submit login", async () => {
-      await passwordEl.fill(creds.password);
-      try {
-        await submitRobustly(page, passwordEl, passwordGone);
-      } catch (err) {
-        const pageError = await readPageError(page);
-        if (pageError) throw new Error(`Zerodha says: "${pageError}"`);
-        throw err;
-      }
-    });
+    await passwordEl.fill(creds.password);
+    try {
+      await submitRobustly(page, passwordEl, passwordGone);
+    } catch (err) {
+      const pageError = await readPageError(page);
+      if (pageError) throw new Error(`Zerodha says: "${pageError}"`);
+      throw err;
+    }
 
-    await withDiagnostics(page, "authorize: fill totp", () =>
-      fillAndSubmitTotp(page, creds.totpCode, [clientIdEl])
-    );
-  }
+    await fillAndSubmitTotp(page, creds.totpCode, [clientIdEl]);
+  });
 
   // Explicit consent screen, if Zerodha shows one.
   const authorizeBtn = page.getByRole("button", { name: /authorize/i }).first();
@@ -396,7 +396,7 @@ async function authorizeAndCaptureRequestToken(
     await authorizeBtn.click();
   }
 
-  await redirectPromise;
+  await withDiagnostics(page, "authorize: wait for redirect", () => redirectPromise);
   const url = new URL(page.url());
   const requestToken = url.searchParams.get("request_token");
   const status = url.searchParams.get("status");
