@@ -1,5 +1,6 @@
 import { chromium, type Page, type Browser, type Locator } from "playwright-core";
 import chromiumBinary from "@sparticuz/chromium";
+import { authenticator } from "otplib";
 
 const LOGIN_URL = "https://developers.kite.trade/login";
 const CREATE_APP_URL = "https://developers.kite.trade/create";
@@ -10,6 +11,8 @@ export interface ConnectResult {
   apiSecret: string;
   requestToken: string;
 }
+
+// ─── Generic helpers ────────────────────────────────────────────────────────────
 
 async function withDiagnostics<T>(page: Page, step: string, fn: () => Promise<T>): Promise<T> {
   try {
@@ -51,8 +54,8 @@ async function submitRobustly(page: Page, lastField: Locator, isDone: () => Prom
   const buttonCandidates = [
     page.locator('button[type="submit"]'),
     page.locator('input[type="submit"]'),
-    page.getByRole("button", { name: /login|sign in|continue|submit|verify/i }),
-    page.getByText(/^(login|continue|submit|verify)$/i),
+    page.getByRole("button", { name: /login|sign in|continue|submit|verify|sign up|create/i }),
+    page.getByText(/^(login|continue|submit|verify|sign up|create)$/i),
   ];
   for (const candidate of buttonCandidates) {
     const first = candidate.first();
@@ -63,6 +66,41 @@ async function submitRobustly(page: Page, lastField: Locator, isDone: () => Prom
   }
 
   throw new Error("Could not submit the form — no submission method worked.");
+}
+
+// Fills a field via realistic keystrokes (not a raw DOM value set) and verifies the
+// resulting value matches — catches cases where a framework silently rejects .fill().
+async function typeAndVerify(field: Locator, value: string, label: string) {
+  await field.click();
+  await field.fill("");
+  await field.pressSequentially(value, { delay: 25 });
+  const actual = await field.inputValue();
+  if (actual !== value) {
+    throw new Error(`${label} field shows "${actual}" instead of "${value}" after typing.`);
+  }
+}
+
+function randomString(length: number): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let out = "";
+  for (let i = 0; i < length; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+function generateThrowawayCredentials() {
+  return {
+    email: `qp.${randomString(10)}@quantpilot-gen.com`,
+    password: `Qp${randomString(8)}!9Xz`,
+  };
+}
+
+async function extractTotpSecretFromPage(page: Page): Promise<string> {
+  const bodyText = await page.locator("body").innerText();
+  // Base32 alphabet (A-Z, 2-7) — TOTP secrets are distinctive enough that a length
+  // match is reliable without needing to know the exact surrounding markup.
+  const match = bodyText.match(/\b[A-Z2-7]{16,32}\b/);
+  if (!match) throw new Error("Could not find a TOTP secret on the page.");
+  return match[0];
 }
 
 const REAL_USER_AGENT =
@@ -91,8 +129,7 @@ async function newStealthPage(browser: Browser): Promise<Page> {
   return page;
 }
 
-// Blocks non-essential resources so pages render (and the TOTP field appears)
-// as fast as possible — the 6-digit code only has ~30s of validity to spend.
+// Blocks non-essential resources so pages render as fast as possible.
 async function speedUpPage(page: Page) {
   await page.route("**/*", (route) => {
     const type = route.request().resourceType();
@@ -103,34 +140,93 @@ async function speedUpPage(page: Page) {
   });
 }
 
-async function loginToZerodha(
-  page: Page,
-  opts: { zerodhaClientId: string; password: string; totpCode: string }
-) {
-  await withDiagnostics(page, "goto login page", () => page.goto(LOGIN_URL, { waitUntil: "commit" }));
+// Locates whatever TOTP input(s) are on the current step (single field or one-box-
+// per-digit) and submits the given code, robust to either layout.
+async function fillAndSubmitTotp(page: Page, code: string, excludeFields: Locator[] = []) {
+  const anyInput = page.locator(
+    'input:not([type="hidden"]):not([type="password"]):not([type="submit"]):not([type="button"])'
+  );
+  await anyInput.first().waitFor({ state: "visible", timeout: 15000 });
 
-  const clientIdEl = page.locator('input[type="text"]').first();
-  await withDiagnostics(page, "fill client id", () => clientIdEl.fill(opts.zerodhaClientId));
+  const visibleInputs: Locator[] = [];
+  const count = await anyInput.count();
+  for (let i = 0; i < count; i++) {
+    const el = anyInput.nth(i);
+    let excluded = false;
+    for (const ex of excludeFields) {
+      const handle = await ex.elementHandle().catch(() => null);
+      if (handle && (await el.evaluate((node, ref) => node === ref, handle).catch(() => false))) {
+        excluded = true;
+        break;
+      }
+    }
+    if (excluded) continue;
+    if (await el.isVisible().catch(() => false)) visibleInputs.push(el);
+  }
+  if (visibleInputs.length === 0) {
+    const pageError = await readPageError(page);
+    if (pageError) throw new Error(`Zerodha says: "${pageError}"`);
+    const dump = await page.locator("input").evaluateAll((els) =>
+      els.map((e) => (e as HTMLElement).outerHTML).join("\n")
+    ).catch(() => "(could not read inputs)");
+    throw new Error(`Could not find the TOTP input field. All <input> elements on page:\n${dump}`);
+  }
 
-  const passwordEl = page.locator('input[type="password"]').first();
-  // Check both the password field AND the login button specifically — the password
-  // field alone can vanish briefly during a failed-submit re-render, giving a false
-  // "we moved on" signal.
-  // Generous timeout — we'd rather wait for a slow-but-real response than fire a
-  // second submission (stale CSRF token, duplicate POST) while the first is in flight.
-  const passwordGone = () =>
+  const totpGone = () =>
     page.waitForFunction(
-      () =>
-        document.querySelectorAll('input[type="password"]').length === 0 &&
-        !document.querySelector('input[type="submit"][value="Login"]'),
+      (n) => document.querySelectorAll('input:not([type="hidden"]):not([type="password"])').length < n,
+      visibleInputs.length,
+      { timeout: 6000 }
+    ).then(() => true).catch(() => false);
+
+  let lastField: Locator;
+  if (visibleInputs.length === 1) {
+    lastField = visibleInputs[0];
+    await lastField.fill(code);
+  } else {
+    const digits = code.split("");
+    const lastIdx = Math.min(digits.length, visibleInputs.length) - 1;
+    for (let i = 0; i <= lastIdx; i++) await visibleInputs[i].fill(digits[i]);
+    lastField = visibleInputs[lastIdx];
+  }
+  await submitRobustly(page, lastField, totpGone);
+}
+
+// ─── Step 1: create a throwaway developers.kite.trade account ─────────────────
+// This console has its own separate login (NOT your Zerodha broker password) — we
+// generate disposable credentials for it since it's just a container for the app.
+
+async function signupDeveloperAccount(page: Page): Promise<void> {
+  const creds = generateThrowawayCredentials();
+
+  await withDiagnostics(page, "goto login page", () => page.goto(LOGIN_URL, { waitUntil: "commit" }));
+  await withDiagnostics(page, "open signup", async () => {
+    const signupLink = page.getByRole("link", { name: /sign ?up/i });
+    await signupLink.click();
+  });
+
+  const emailEl = page.locator('input[type="email"], input[type="text"]').first();
+  await withDiagnostics(page, "fill signup email", () => typeAndVerify(emailEl, creds.email, "Email"));
+
+  const passwordFields = page.locator('input[type="password"]');
+  await withDiagnostics(page, "fill signup password", async () => {
+    const n = await passwordFields.count();
+    for (let i = 0; i < n; i++) {
+      await typeAndVerify(passwordFields.nth(i), creds.password, `Password[${i}]`);
+    }
+  });
+
+  const lastPasswordField = passwordFields.last();
+  const passwordFieldsGone = () =>
+    page.waitForFunction(
+      () => document.querySelectorAll('input[type="password"]').length === 0,
       null,
       { timeout: 6000 }
     ).then(() => true).catch(() => false);
 
-  await withDiagnostics(page, "submit login", async () => {
-    await passwordEl.fill(opts.password);
+  await withDiagnostics(page, "submit signup", async () => {
     try {
-      await submitRobustly(page, passwordEl, passwordGone);
+      await submitRobustly(page, lastPasswordField, passwordFieldsGone);
     } catch (err) {
       const pageError = await readPageError(page);
       if (pageError) throw new Error(`Zerodha says: "${pageError}"`);
@@ -138,61 +234,16 @@ async function loginToZerodha(
     }
   });
 
-  // Second factor — the caller passes the live 6-digit code from their authenticator
-  // app; it must still be valid (within its ~30s window) by the time we reach here.
-  // Deliberately excludes input[type="text"] — that risks matching a stale client-id
-  // field if we're still (incorrectly) on the password step.
-  await withDiagnostics(page, "fill totp", async () => {
-    // Wait for at least one visible, fillable, non-password input to appear on this
-    // new step. Excludes submit/button controls (never text-fillable) and, once we
-    // know the client-id field's exact handle, that specific element too — both
-    // caused crashes/corruption in earlier runs when we were still on the login step.
-    const anyInput = page.locator(
-      'input:not([type="hidden"]):not([type="password"]):not([type="submit"]):not([type="button"])'
-    );
-    await anyInput.first().waitFor({ state: "visible", timeout: 15000 });
-
-    const visibleInputs = [];
-    const count = await anyInput.count();
-    for (let i = 0; i < count; i++) {
-      const el = anyInput.nth(i);
-      const isClientIdField = await el.evaluate((node, ref) => node === ref, await clientIdEl.elementHandle()).catch(() => false);
-      if (isClientIdField) continue;
-      if (await el.isVisible().catch(() => false)) visibleInputs.push(el);
-    }
-    if (visibleInputs.length === 0) {
-      const pageError = await readPageError(page);
-      if (pageError) throw new Error(`Zerodha says: "${pageError}"`);
-      const dump = await page.locator("input").evaluateAll((els) =>
-        els.map((e) => (e as HTMLElement).outerHTML).join("\n")
-      ).catch(() => "(could not read inputs)");
-      throw new Error(`Could not find the TOTP input field. All <input> elements on page:\n${dump}`);
-    }
-
-    const totpGone = () =>
-      page.waitForFunction(
-        (n) => document.querySelectorAll('input:not([type="hidden"]):not([type="password"])').length < n,
-        visibleInputs.length,
-        { timeout: 6000 }
-      ).then(() => true).catch(() => false);
-
-    let lastField: Locator;
-    if (visibleInputs.length === 1) {
-      // Single field takes the whole code.
-      lastField = visibleInputs[0];
-      await lastField.fill(opts.totpCode);
-    } else {
-      // Multiple boxes — one digit per box (common OTP UI pattern).
-      const digits = opts.totpCode.split("");
-      const lastIdx = Math.min(digits.length, visibleInputs.length) - 1;
-      for (let i = 0; i <= lastIdx; i++) {
-        await visibleInputs[i].fill(digits[i]);
-      }
-      lastField = visibleInputs[lastIdx];
-    }
-    await submitRobustly(page, lastField, totpGone);
+  // TOTP setup for the new account — extract the manual-entry secret and submit a
+  // freshly generated code (never time-limited from our side since we control it).
+  await withDiagnostics(page, "setup totp", async () => {
+    const secret = await extractTotpSecretFromPage(page);
+    const code = authenticator.generate(secret);
+    await fillAndSubmitTotp(page, code);
   });
 }
+
+// ─── Step 2: create the Personal Kite Connect app ──────────────────────────────
 
 async function clickAppTypeOption(page: Page, label: string) {
   const candidates = [
@@ -252,12 +303,54 @@ async function createPersonalKiteApp(
   return { apiKey: apiKey.trim(), apiSecret: apiSecret.trim() };
 }
 
-async function authorizeAndCaptureRequestToken(page: Page, apiKey: string): Promise<string> {
-  const redirectPromise = page.waitForURL((url) => url.href.startsWith(REDIRECT_URL), { timeout: 30000 });
+// ─── Step 3: authorize the app with the user's REAL Zerodha login ─────────────
+// This is the actual broker login (kite.zerodha.com) — different system from the
+// developer console, and where the user's real credentials are actually needed.
+
+async function authorizeAndCaptureRequestToken(
+  page: Page,
+  apiKey: string,
+  creds: { zerodhaClientId: string; password: string; totpCode: string }
+): Promise<string> {
+  const redirectPromise = page.waitForURL((url) => url.href.startsWith(REDIRECT_URL), { timeout: 45000 });
   await page.goto(`https://kite.zerodha.com/connect/login?v=3&api_key=${apiKey}`, {
-    waitUntil: "domcontentloaded",
+    waitUntil: "commit",
   });
 
+  // If a login form is showing (not already authenticated), complete it.
+  const clientIdEl = page.locator('input[type="text"], input[type="tel"]').first();
+  const isLoginForm = await clientIdEl.isVisible({ timeout: 8000 }).catch(() => false);
+
+  if (isLoginForm) {
+    await withDiagnostics(page, "authorize: fill client id", () =>
+      typeAndVerify(clientIdEl, creds.zerodhaClientId, "Client ID")
+    );
+
+    const passwordEl = page.locator('input[type="password"]').first();
+    const passwordGone = () =>
+      page.waitForFunction(
+        () => document.querySelectorAll('input[type="password"]').length === 0,
+        null,
+        { timeout: 6000 }
+      ).then(() => true).catch(() => false);
+
+    await withDiagnostics(page, "authorize: submit login", async () => {
+      await passwordEl.fill(creds.password);
+      try {
+        await submitRobustly(page, passwordEl, passwordGone);
+      } catch (err) {
+        const pageError = await readPageError(page);
+        if (pageError) throw new Error(`Zerodha says: "${pageError}"`);
+        throw err;
+      }
+    });
+
+    await withDiagnostics(page, "authorize: fill totp", () =>
+      fillAndSubmitTotp(page, creds.totpCode, [clientIdEl])
+    );
+  }
+
+  // Explicit consent screen, if Zerodha shows one.
   const authorizeBtn = page.getByRole("button", { name: /authorize/i });
   if (await authorizeBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
     await authorizeBtn.click();
@@ -273,6 +366,8 @@ async function authorizeAndCaptureRequestToken(page: Page, apiKey: string): Prom
   return requestToken;
 }
 
+// ─── Orchestration ──────────────────────────────────────────────────────────────
+
 export async function connectZerodhaAccount(opts: {
   zerodhaClientId: string;
   password: string;
@@ -284,9 +379,11 @@ export async function connectZerodhaAccount(opts: {
   try {
     const page = await newStealthPage(browser);
     await speedUpPage(page);
-    await loginToZerodha(page, opts);
+
+    await signupDeveloperAccount(page);
     const { apiKey, apiSecret } = await createPersonalKiteApp(page, opts);
-    const requestToken = await authorizeAndCaptureRequestToken(page, apiKey);
+    const requestToken = await authorizeAndCaptureRequestToken(page, apiKey, opts);
+
     return { apiKey, apiSecret, requestToken };
   } finally {
     await browser.close().catch(() => {});
