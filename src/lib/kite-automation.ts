@@ -196,37 +196,55 @@ async function fillAndSubmitTotp(page: Page, code: string, excludeFields: Locato
 // This console has its own separate login (NOT your Zerodha broker password) — we
 // generate disposable credentials for it since it's just a container for the app.
 
+function randomPhone(): string {
+  let out = "9";
+  for (let i = 0; i < 9; i++) out += Math.floor(Math.random() * 10);
+  return out;
+}
+
+// Field IDs confirmed against the live signup form (developers.kite.trade/signup):
+// id_email, id_name, id_password, id_confirm_password, id_phone, a required state
+// <select> (no visible asterisk, but submission silently fails without it), and a
+// required id_disclaimer checkbox.
 async function signupDeveloperAccount(page: Page): Promise<void> {
-  const creds = generateThrowawayCredentials();
+  const creds = { ...generateThrowawayCredentials(), name: "QuantPilot User", phone: randomPhone() };
 
   await withDiagnostics(page, "goto login page", () => page.goto(LOGIN_URL, { waitUntil: "commit" }));
   await withDiagnostics(page, "open signup", async () => {
-    const signupLink = page.getByRole("link", { name: /sign ?up/i });
+    const signupLink = page.getByRole("link", { name: /sign ?up/i }).first();
     await signupLink.click();
   });
 
-  const emailEl = page.locator('input[type="email"], input[type="text"]').first();
-  await withDiagnostics(page, "fill signup email", () => typeAndVerify(emailEl, creds.email, "Email"));
+  await withDiagnostics(page, "fill signup form", async () => {
+    await page.locator("#id_email").fill(creds.email);
+    await page.locator("#id_name").fill(creds.name);
+    await page.locator("#id_password").fill(creds.password);
+    await page.locator("#id_confirm_password").fill(creds.password);
+    await page.locator("#id_phone").fill(creds.phone);
 
-  const passwordFields = page.locator('input[type="password"]');
-  await withDiagnostics(page, "fill signup password", async () => {
-    const n = await passwordFields.count();
-    for (let i = 0; i < n; i++) {
-      await typeAndVerify(passwordFields.nth(i), creds.password, `Password[${i}]`);
+    const stateSelect = page.locator("select").first();
+    if (await stateSelect.isVisible({ timeout: 3000 }).catch(() => false)) {
+      const options = await stateSelect.locator("option").allTextContents();
+      const karnataka = options.find((o) => o.trim().toUpperCase() === "KARNATAKA");
+      if (karnataka) await stateSelect.selectOption({ label: karnataka });
+    }
+
+    const disclaimer = page.locator("#id_disclaimer");
+    if (await disclaimer.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await disclaimer.check();
     }
   });
 
-  const lastPasswordField = passwordFields.last();
-  const passwordFieldsGone = () =>
-    page.waitForFunction(
-      () => document.querySelectorAll('input[type="password"]').length === 0,
-      null,
-      { timeout: 6000 }
-    ).then(() => true).catch(() => false);
+  const onAppsPage = () =>
+    page.waitForURL((url) => url.pathname.includes("/apps") || url.pathname.includes("/create"), { timeout: 8000 })
+      .then(() => true).catch(() => false);
 
   await withDiagnostics(page, "submit signup", async () => {
     try {
-      await submitRobustly(page, lastPasswordField, passwordFieldsGone);
+      await page.locator('input[type="submit"]').first().click();
+      if (!(await onAppsPage())) {
+        await submitRobustly(page, page.locator("#id_disclaimer"), onAppsPage);
+      }
     } catch (err) {
       const pageError = await readPageError(page);
       if (pageError) throw new Error(`Zerodha says: "${pageError}"`);
@@ -234,13 +252,19 @@ async function signupDeveloperAccount(page: Page): Promise<void> {
     }
   });
 
-  // TOTP setup for the new account — extract the manual-entry secret and submit a
-  // freshly generated code (never time-limited from our side since we control it).
-  await withDiagnostics(page, "setup totp", async () => {
-    const secret = await extractTotpSecretFromPage(page);
-    const code = authenticator.generate(secret);
-    await fillAndSubmitTotp(page, code);
-  });
+  // TOTP setup only appears for some accounts/flows — handle it if shown, skip if not.
+  const totpSecretVisible = await page
+    .locator("body")
+    .innerText()
+    .then((t) => /\b[A-Z2-7]{16,32}\b/.test(t))
+    .catch(() => false);
+  if (totpSecretVisible) {
+    await withDiagnostics(page, "setup totp", async () => {
+      const secret = await extractTotpSecretFromPage(page);
+      const code = authenticator.generate(secret);
+      await fillAndSubmitTotp(page, code);
+    });
+  }
 }
 
 // ─── Step 2: create the Personal Kite Connect app ──────────────────────────────
@@ -260,41 +284,57 @@ async function clickAppTypeOption(page: Page, label: string) {
   throw new Error(`Could not find the "${label}" app type option`);
 }
 
+// Extracts the value shown directly below a text label on the page (used for API
+// key/secret, which render as plain text next to their label, not inside inputs).
+async function extractLabeledValue(page: Page, label: string): Promise<string> {
+  const text = await page.locator("body").innerText();
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const idx = lines.findIndex((l) => l === label);
+  if (idx === -1 || idx + 1 >= lines.length) {
+    throw new Error(`Could not find "${label}" on page (url: ${page.url()}).`);
+  }
+  return lines[idx + 1];
+}
+
+// Field IDs and page structure confirmed against the live create-app form:
+// no Description field exists; App name is #id_name, client ID is #zerodha-id,
+// redirect URL is #id_redirect_url. Submitting lands on the /apps list (not the
+// new app's own page), so we find and follow the link matching our app name.
 async function createPersonalKiteApp(
   page: Page,
-  opts: { appName: string; zerodhaClientId: string; description: string }
+  opts: { appName: string; zerodhaClientId: string }
 ): Promise<{ apiKey: string; apiSecret: string }> {
   await withDiagnostics(page, "goto create page", () =>
     page.goto(CREATE_APP_URL, { waitUntil: "domcontentloaded" })
   );
 
   await withDiagnostics(page, "select Personal type", () => clickAppTypeOption(page, "Personal"));
-  await withDiagnostics(page, "fill app name", async () => {
-    const el = await findInputNearText(page, "App name");
-    await el.fill(opts.appName);
-  });
+  await withDiagnostics(page, "fill app name", () => page.locator("#id_name").fill(opts.appName));
   await withDiagnostics(page, "fill client id", () =>
-    page.getByPlaceholder(/AB1234/i).fill(opts.zerodhaClientId)
+    page.locator("#zerodha-id").fill(opts.zerodhaClientId)
   );
   await withDiagnostics(page, "fill redirect url", () =>
-    page.getByPlaceholder("https://").first().fill(REDIRECT_URL)
+    page.locator("#id_redirect_url").fill(REDIRECT_URL)
   );
-  await withDiagnostics(page, "fill description", async () => {
-    const el = await findInputNearText(page, "Description");
-    await el.fill(opts.description);
-  });
   await withDiagnostics(page, "submit create form", () =>
-    page.getByRole("button", { name: /^Create$/i }).click()
+    page.locator('input[type="submit"]').first().click()
   );
-  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.waitForURL((url) => url.pathname.includes("/apps"), { timeout: 15000 });
 
-  const apiKey = await withDiagnostics(page, "read api key", () =>
-    page.locator("input[readonly], input[disabled]").first().inputValue()
-  );
-  const showSecretBtn = page.getByRole("button", { name: /show api secret/i });
-  if (await showSecretBtn.isVisible().catch(() => false)) await showSecretBtn.click();
+  await withDiagnostics(page, "open new app", async () => {
+    const appLink = page.locator(`a[href^="/apps/"]`).filter({ hasText: opts.appName }).first();
+    await appLink.click();
+    await page.waitForURL((url) => /\/apps\/[^/]+$/.test(url.pathname), { timeout: 10000 });
+  });
+
+  const apiKey = await withDiagnostics(page, "read api key", () => extractLabeledValue(page, "API key"));
+
+  await withDiagnostics(page, "reveal api secret", async () => {
+    const showSecretEl = page.getByText("Show API secret", { exact: false }).first();
+    await showSecretEl.click();
+  });
   const apiSecret = await withDiagnostics(page, "read api secret", () =>
-    page.locator("input[readonly], input[disabled]").nth(1).inputValue()
+    extractLabeledValue(page, "API secret")
   );
 
   if (!apiKey.trim() || !apiSecret.trim()) {
@@ -351,7 +391,7 @@ async function authorizeAndCaptureRequestToken(
   }
 
   // Explicit consent screen, if Zerodha shows one.
-  const authorizeBtn = page.getByRole("button", { name: /authorize/i });
+  const authorizeBtn = page.getByRole("button", { name: /authorize/i }).first();
   if (await authorizeBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
     await authorizeBtn.click();
   }
@@ -373,7 +413,6 @@ export async function connectZerodhaAccount(opts: {
   password: string;
   totpCode: string;
   appName: string;
-  description: string;
 }): Promise<ConnectResult> {
   const browser = await launchBrowser();
   try {

@@ -31,7 +31,6 @@ export async function POST(request: NextRequest) {
       password,
       totpCode,
       appName: `QuantPilot-${user.id.slice(0, 8)}`,
-      description: "Personal trading dashboard powered by QuantPilot.",
     });
 
     const { access_token, kite_user_id, kite_user_name } = await exchangeToken(
