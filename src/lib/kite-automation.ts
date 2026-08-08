@@ -384,13 +384,35 @@ async function authorizeAndCaptureRequestToken(
     await fillAndSubmitTotp(page, creds.totpCode, [clientIdEl]);
   });
 
-  // Explicit consent screen, if Zerodha shows one.
-  const authorizeBtn = page.getByRole("button", { name: /authorize/i }).first();
-  if (await authorizeBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await authorizeBtn.click();
+  // Explicit consent screen, if Zerodha shows one. Other submit controls on this
+  // site are input[type=submit], not <button>, so check both — missing this click
+  // entirely (silently) is what previously left the flow to just land on Kite Web.
+  await page.waitForTimeout(1000);
+  const authorizeCandidates = [
+    page.getByRole("button", { name: /authorize/i }),
+    page.locator('input[type="submit"][value*="uthorize" i]'),
+    page.locator('input[type="submit"]'),
+    page.getByText(/^authorize$/i),
+  ];
+  let clickedAuthorize = false;
+  for (const candidate of authorizeCandidates) {
+    const first = candidate.first();
+    if (await first.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await first.click().catch(() => {});
+      clickedAuthorize = true;
+      break;
+    }
   }
 
-  await withDiagnostics(page, "authorize: wait for redirect", () => redirectPromise);
+  try {
+    await withDiagnostics(page, "authorize: wait for redirect", () => redirectPromise);
+  } catch (err) {
+    const bodyText = await page.locator("body").innerText().catch(() => "(unreadable)");
+    throw new Error(
+      `${err instanceof Error ? err.message : String(err)} — clickedAuthorize=${clickedAuthorize}, page text: ${bodyText.slice(0, 500)}`
+    );
+  }
+
   const url = new URL(page.url());
   const requestToken = url.searchParams.get("request_token");
   const status = url.searchParams.get("status");

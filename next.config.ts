@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@sparticuz/chromium", "playwright-core"],
   outputFileTracingIncludes: {
     "/api/kite-onboard/connect": ["node_modules/playwright-core/**/*", "node_modules/@sparticuz/chromium/**/*"],
+    "/api/kite-onboard/authorize": ["node_modules/playwright-core/**/*", "node_modules/@sparticuz/chromium/**/*"],
   },
 };
 
