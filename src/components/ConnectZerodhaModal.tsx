@@ -71,6 +71,7 @@ export default function ConnectZerodhaModal() {
   const [showPassword, setShowPassword] = useState(false);
   const [totpCode, setTotpCode] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [connectingMsg, setConnectingMsg] = useState("Connecting your account…");
   const [manualApiKey, setManualApiKey] = useState("");
   const [manualApiSecret, setManualApiSecret] = useState("");
 
@@ -84,7 +85,7 @@ export default function ConnectZerodhaModal() {
     setManualApiSecret("");
   }
 
-  function submitCredentials(e: React.FormEvent) {
+  async function submitCredentials(e: React.FormEvent) {
     e.preventDefault();
     const id = clientId.trim().toUpperCase();
     if (!/^[A-Z]{2}[0-9A-Z]{4}$/.test(id)) {
@@ -97,7 +98,23 @@ export default function ConnectZerodhaModal() {
     }
     setErrorMsg("");
     setClientId(id);
-    setStage("totp");
+    setConnectingMsg("Setting up your account…");
+    setStage("connecting");
+
+    // Phase 1 — no live TOTP code needed yet, so this can safely take its time.
+    try {
+      const res = await fetch("/api/kite-onboard/connect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ zerodhaClientId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Couldn't set up your account.");
+      setStage("totp");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Something went wrong.");
+      setStage("error");
+    }
   }
 
   async function connectWithCode(code: string) {
@@ -106,10 +123,12 @@ export default function ConnectZerodhaModal() {
       return;
     }
     setErrorMsg("");
+    setConnectingMsg("Connecting your account…");
     setStage("connecting");
 
+    // Phase 2 — fired immediately with a fresh code, so it's fast.
     try {
-      const res = await fetch("/api/kite-onboard/connect", {
+      const res = await fetch("/api/kite-onboard/authorize", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ zerodhaClientId: clientId, password, totpCode: code }),
@@ -267,7 +286,7 @@ export default function ConnectZerodhaModal() {
               {stage === "connecting" && (
                 <div className="flex flex-col items-center justify-center py-10 gap-3">
                   <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: "#E5E7EB", borderTopColor: "#2563EB" }} />
-                  <p className="text-[13px] text-[#6B7280]">Connecting your account…</p>
+                  <p className="text-[13px] text-[#6B7280]">{connectingMsg}</p>
                 </div>
               )}
 

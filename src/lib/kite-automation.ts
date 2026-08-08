@@ -6,12 +6,6 @@ const LOGIN_URL = "https://developers.kite.trade/login";
 const CREATE_APP_URL = "https://developers.kite.trade/create";
 const REDIRECT_URL = "https://tradeos-eta.vercel.app/api/auth/kite/callback";
 
-export interface ConnectResult {
-  apiKey: string;
-  apiSecret: string;
-  requestToken: string;
-}
-
 // ─── Generic helpers ────────────────────────────────────────────────────────────
 
 async function withDiagnostics<T>(page: Page, step: string, fn: () => Promise<T>): Promise<T> {
@@ -407,23 +401,41 @@ async function authorizeAndCaptureRequestToken(
 }
 
 // ─── Orchestration ──────────────────────────────────────────────────────────────
+// Split into two independent phases because the second needs the user's live,
+// ~30s-lived TOTP code — bundling it with the (slower) signup+create-app steps
+// meant the code was reliably expired by the time it was actually used. Each
+// phase launches its own browser; the only thing passed between them is the
+// apiKey/apiSecret (persisted by the caller in between, e.g. in the database).
 
-export async function connectZerodhaAccount(opts: {
+export async function createKiteApp(opts: {
   zerodhaClientId: string;
-  password: string;
-  totpCode: string;
   appName: string;
-}): Promise<ConnectResult> {
+}): Promise<{ apiKey: string; apiSecret: string }> {
   const browser = await launchBrowser();
   try {
     const page = await newStealthPage(browser);
     await speedUpPage(page);
 
     await signupDeveloperAccount(page);
-    const { apiKey, apiSecret } = await createPersonalKiteApp(page, opts);
-    const requestToken = await authorizeAndCaptureRequestToken(page, apiKey, opts);
+    return await createPersonalKiteApp(page, opts);
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
 
-    return { apiKey, apiSecret, requestToken };
+export async function authorizeKiteApp(opts: {
+  apiKey: string;
+  zerodhaClientId: string;
+  password: string;
+  totpCode: string;
+}): Promise<{ requestToken: string }> {
+  const browser = await launchBrowser();
+  try {
+    const page = await newStealthPage(browser);
+    await speedUpPage(page);
+
+    const requestToken = await authorizeAndCaptureRequestToken(page, opts.apiKey, opts);
+    return { requestToken };
   } finally {
     await browser.close().catch(() => {});
   }
