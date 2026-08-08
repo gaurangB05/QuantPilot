@@ -341,13 +341,21 @@ async function createPersonalKiteApp(
 // This is the actual broker login (kite.zerodha.com) — different system from the
 // developer console, and where the user's real credentials are actually needed.
 
+// Zerodha is a first-party redirect chain: login -> TOTP -> (optional consent) ->
+// redirect to REDIRECT_URL with request_token. The listener below is armed BEFORE
+// navigation is triggered on purpose — page.waitForURL only inspects future
+// navigation events (plus whatever the current URL already is at call time), so if
+// it were attached after the login/TOTP/consent actions instead, a fast redirect
+// that already happened in between could be missed entirely. This part was already
+// correct; the actual bug was downstream (see below).
 async function authorizeAndCaptureRequestToken(
   page: Page,
   apiKey: string,
   creds: { zerodhaClientId: string; password: string; totpCode: string }
 ): Promise<string> {
+  const REDIRECT_TIMEOUT_MS = 45000;
   const redirectPromise = page.waitForURL((url) => url.href.startsWith(REDIRECT_URL), {
-    timeout: 45000,
+    timeout: REDIRECT_TIMEOUT_MS,
     waitUntil: "commit",
   });
   await page.goto(`https://kite.zerodha.com/connect/login?v=3&api_key=${apiKey}`, {
@@ -384,33 +392,68 @@ async function authorizeAndCaptureRequestToken(
     await fillAndSubmitTotp(page, creds.totpCode, [clientIdEl]);
   });
 
-  // Explicit consent screen, if Zerodha shows one. Other submit controls on this
-  // site are input[type=submit], not <button>, so check both — missing this click
-  // entirely (silently) is what previously left the flow to just land on Kite Web.
-  await page.waitForTimeout(1000);
-  const authorizeCandidates = [
-    page.getByRole("button", { name: /authorize/i }),
-    page.locator('input[type="submit"][value*="uthorize" i]'),
-    page.locator('input[type="submit"]'),
-    page.getByText(/^authorize$/i),
-  ];
-  let clickedAuthorize = false;
-  for (const candidate of authorizeCandidates) {
-    const first = candidate.first();
-    if (await first.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await first.click().catch(() => {});
-      clickedAuthorize = true;
-      break;
-    }
+  // Explicit consent screen, if Zerodha shows one (not every app gets one — many
+  // Personal apps redirect straight through after TOTP). Match by wording, not by
+  // tag: Zerodha is an Indian company and consistently uses British spelling
+  // ("Authorise"), which a US-spelling-only match would silently never find, and
+  // its submit controls are as often input[type=submit] as <button>. Playwright's
+  // hasText filter reads an input[type=submit]'s `value` as its text, so one
+  // locator + one bounded check covers all of it without risking a click on some
+  // unrelated visible submit control (e.g. a search box) if no consent screen
+  // exists at all.
+  const authorizeControl = page
+    .locator('button, input[type="submit"], a, [role="button"]')
+    .filter({ hasText: /authori[sz]e/i })
+    .first();
+  const clickedAuthorize = await authorizeControl
+    .isVisible({ timeout: 4000 })
+    .catch(() => false);
+  if (clickedAuthorize) {
+    await authorizeControl.click().catch(() => {});
   }
 
+  // Failure here has historically shown up as: no redirect ever arrives, and the
+  // browser is just sitting on Kite's own home page (login "succeeded" as a normal
+  // Kite Web session, but the OAuth continuation never fired — usually a rejected
+  // TOTP or an app that isn't authorized for this account). Watch for that
+  // specific stuck state concurrently with the redirect wait so a real failure
+  // surfaces with an actionable message well before the 45s ceiling, rather than
+  // a bare timeout. This does not extend REDIRECT_TIMEOUT_MS — it's a faster exit
+  // within the same budget, not a longer one.
+  let settled = false;
+  const stuckOnHomeWatcher = (async () => {
+    let stuckStreak = 0;
+    while (!settled) {
+      await page.waitForTimeout(1000);
+      if (settled) return;
+      const url = page.url();
+      if (/^https:\/\/kite\.zerodha\.com\/?(\?.*)?$/.test(url)) {
+        stuckStreak++;
+        if (stuckStreak >= 4) {
+          const pageError = await readPageError(page);
+          throw new Error(
+            pageError
+              ? `Zerodha says: "${pageError}"`
+              : "Landed on Kite's own home page instead of redirecting back to the app — the TOTP code was likely rejected, or this app isn't authorized for this account."
+          );
+        }
+      } else {
+        stuckStreak = 0;
+      }
+    }
+  })();
+
   try {
-    await withDiagnostics(page, "authorize: wait for redirect", () => redirectPromise);
+    await withDiagnostics(page, "authorize: wait for redirect", () =>
+      Promise.race([redirectPromise, stuckOnHomeWatcher])
+    );
   } catch (err) {
     const bodyText = await page.locator("body").innerText().catch(() => "(unreadable)");
     throw new Error(
       `${err instanceof Error ? err.message : String(err)} — clickedAuthorize=${clickedAuthorize}, page text: ${bodyText.slice(0, 500)}`
     );
+  } finally {
+    settled = true;
   }
 
   const url = new URL(page.url());
