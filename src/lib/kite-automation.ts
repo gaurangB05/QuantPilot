@@ -29,21 +29,48 @@ async function readPageError(page: Page): Promise<string | null> {
   return text?.trim() || null;
 }
 
+// Zerodha's real login form gates further attempts behind an Altcha CAPTCHA widget
+// (confirmed live: absent on a fresh page load, injected into the DOM the moment a
+// submission doesn't cleanly succeed) that this automation has no way to solve.
+// Detecting it lets a stuck submit fail fast with a clear reason instead of
+// continuing to hammer buttons that are now guaranteed to keep failing.
+async function captchaIsBlocking(page: Page): Promise<boolean> {
+  return page
+    .locator('altcha-widget, .captcha, [class*="captcha" i]')
+    .first()
+    .isVisible({ timeout: 500 })
+    .catch(() => false);
+}
+
 // Tries several ways of submitting a form after filling its last field, checking
 // `isDone` after each attempt. The exact markup of third-party pages is unknown to
-// us, so no single mechanism (button selector, Enter key, etc) can be trusted alone.
+// us, so no single mechanism (button selector, Enter key, etc) can be trusted alone
+// — but each mechanism is a REAL submission, so they're tried one at a time with a
+// generous wait in between, not fired in a tight burst. Confirmed live against
+// kite.zerodha.com: submitting the same login/TOTP form twice in quick succession
+// (which happens if a merely-slow-but-successful first response gets mistaken for
+// failure) is itself what gets a session flagged and gated behind the CAPTCHA below
+// — so patience here isn't cosmetic, it's what keeps a slow-but-fine attempt from
+// turning into a genuinely broken one.
 async function submitRobustly(page: Page, lastField: Locator, isDone: () => Promise<boolean>) {
+  const bailIfCaptchaBlocked = async () => {
+    if (await captchaIsBlocking(page)) {
+      throw new Error(
+        "Zerodha is asking to solve a CAPTCHA before continuing — this happens after a slow or duplicate login attempt, which this automated flow can't solve. Please try connecting again."
+      );
+    }
+  };
+
   await lastField.press("Enter");
   if (await isDone()) return;
-
-  await page.keyboard.press("Enter");
-  if (await isDone()) return;
+  await bailIfCaptchaBlocked();
 
   await page.evaluate(() => {
     const form = document.querySelector("form");
     if (form) (form as HTMLFormElement).requestSubmit();
   }).catch(() => {});
   if (await isDone()) return;
+  await bailIfCaptchaBlocked();
 
   const buttonCandidates = [
     page.locator('button[type="submit"]'),
@@ -56,6 +83,7 @@ async function submitRobustly(page: Page, lastField: Locator, isDone: () => Prom
     if (await first.isVisible({ timeout: 1500 }).catch(() => false)) {
       await first.click().catch(() => {});
       if (await isDone()) return;
+      await bailIfCaptchaBlocked();
     }
   }
 
@@ -166,11 +194,15 @@ async function fillAndSubmitTotp(page: Page, code: string, excludeFields: Locato
     throw new Error(`Could not find the TOTP input field. All <input> elements on page:\n${dump}`);
   }
 
+  // 12s, not 6s: a TOTP code is single-use server-side, so declaring "not done" too
+  // early and letting submitRobustly fire a second real submission risks resending
+  // the SAME code — which Zerodha can reject as already-consumed even though it was
+  // correct, indistinguishable from a wrong code from the outside.
   const totpGone = () =>
     page.waitForFunction(
       (n) => document.querySelectorAll('input:not([type="hidden"]):not([type="password"])').length < n,
       visibleInputs.length,
-      { timeout: 6000 }
+      { timeout: 12000 }
     ).then(() => true).catch(() => false);
 
   let lastField: Locator;
@@ -373,11 +405,16 @@ async function authorizeAndCaptureRequestToken(
     await typeAndVerify(clientIdEl, creds.zerodhaClientId, "Client ID");
 
     const passwordEl = page.locator("#password, input[type=\"password\"]").first();
+    // 12s, not 6s: confirmed live that Zerodha only shows an Altcha CAPTCHA (which
+    // this flow can't solve) after a submission doesn't cleanly register — and a
+    // too-short patience window here is exactly what causes submitRobustly to send
+    // a second real password submission while the first (successful) one is still
+    // in flight, which is itself what triggers that CAPTCHA gate.
     const passwordGone = () =>
       page.waitForFunction(
         () => document.querySelectorAll('input[type="password"]').length === 0,
         null,
-        { timeout: 6000 }
+        { timeout: 12000 }
       ).then(() => true).catch(() => false);
 
     await passwordEl.fill(creds.password);
