@@ -4,6 +4,21 @@ import { useState } from "react";
 
 type Stage = "credentials" | "manual" | "connecting" | "error";
 
+// A backend response isn't guaranteed to be JSON even on a route that always
+// returns JSON on purpose — a platform-level failure (e.g. a serverless function
+// timeout) can return an HTML error page instead, and .json() throws a cryptic
+// "Unexpected token '<'" on that. Read as text first so a non-JSON body becomes a
+// normal, readable error instead of a raw parse exception.
+async function parseApiResponse(res: Response): Promise<{ error?: string }> {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: `Server error (${res.status}). Please try again in a moment.` };
+  }
+}
+
 export default function ConnectZerodhaModal() {
   const [open, setOpen] = useState(false);
   const [stage, setStage] = useState<Stage>("credentials");
@@ -38,7 +53,7 @@ export default function ConnectZerodhaModal() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ zerodhaClientId: id }),
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error ?? "Couldn't set up your account.");
       // Real login happens on Zerodha's own site — your password/TOTP never touch us.
       window.location.href = "/api/auth/kite/login";
@@ -61,7 +76,7 @@ export default function ConnectZerodhaModal() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ apiKey: manualApiKey.trim(), apiSecret: manualApiSecret.trim() }),
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error ?? "Couldn't save your API credentials.");
       window.location.href = "/api/auth/kite/login";
     } catch (err) {

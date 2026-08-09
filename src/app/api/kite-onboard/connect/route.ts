@@ -4,6 +4,32 @@ import { createKiteApp } from "@/lib/kite-automation";
 
 export const maxDuration = 60;
 
+// Vercel hard-kills the function at maxDuration and returns its own HTML timeout
+// page — which never reaches our catch block, so the frontend gets `<!DOCTYPE...`
+// instead of JSON. Racing against a shorter internal deadline means OUR code is
+// always what responds, with a real JSON error, well before the platform can.
+const SOFT_DEADLINE_MS = 50_000;
+
+async function createKiteAppWithDeadline(
+  opts: Parameters<typeof createKiteApp>[0]
+): ReturnType<typeof createKiteApp> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(
+        new Error(
+          "Setting up your Zerodha app is taking longer than expected. Please try again — it usually succeeds on retry."
+        )
+      );
+    }, SOFT_DEADLINE_MS);
+  });
+  try {
+    return await Promise.race([createKiteApp(opts), deadline]);
+  } finally {
+    clearTimeout(timeoutId!);
+  }
+}
+
 // Onboarding automation: sets up a throwaway developer-console account and
 // creates the Personal Kite Connect app for this user. Never touches the user's
 // real Zerodha password/TOTP — those are entered directly on kite.zerodha.com
@@ -20,7 +46,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { apiKey, apiSecret } = await createKiteApp({
+    const { apiKey, apiSecret } = await createKiteAppWithDeadline({
       zerodhaClientId,
       appName: `QuantPilot-${user.id.slice(0, 8)}`,
     });
