@@ -292,25 +292,25 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, err
       )}
 
       {/* Page header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-[1.5rem] font-bold text-[#111827] tracking-tight">Dashboard</h1>
           <p className="text-[13px] text-[#9CA3AF] mt-0.5">
             {kiteUserName} &middot; {kiteUserId} &middot; Zerodha &middot; Last updated {fetchedLabel}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <form action={personalizeDashboard} className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <form action={personalizeDashboard} className="flex items-center gap-2 flex-1 sm:flex-none min-w-0">
             <input
               type="text"
               name="prompt"
               placeholder="Personalize your dashboard…"
-              className="px-3 py-2 rounded-xl text-[12.5px] text-[#111827] w-56"
+              className="px-3 py-2 rounded-xl text-[12.5px] text-[#111827] w-full sm:w-56 min-w-0"
               style={{ border: "1px solid #E5E7EB", background: "white" }}
             />
             <SubmitButton
               pendingText="Personalizing…"
-              className="px-4 py-2 rounded-xl text-[12.5px] font-medium text-white cursor-pointer"
+              className="px-4 py-2 rounded-xl text-[12.5px] font-medium text-white cursor-pointer whitespace-nowrap"
               style={{ background: "#2563EB" }}>
               Personalize
             </SubmitButton>
@@ -318,7 +318,7 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, err
           <form action={refreshData}>
             <SubmitButton
               pendingText="Refreshing…"
-              className="px-4 py-2 rounded-xl text-[12.5px] font-medium text-[#6B7280] cursor-pointer"
+              className="px-4 py-2 rounded-xl text-[12.5px] font-medium text-[#6B7280] cursor-pointer whitespace-nowrap"
               style={{ border: "1px solid #E5E7EB", background: "white" }}>
               Refresh data
             </SubmitButton>
@@ -326,7 +326,7 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, err
           <form action={signOut}>
             <SubmitButton
               pendingText="Signing out…"
-              className="px-4 py-2 rounded-xl text-[12.5px] font-medium text-[#DC2626] cursor-pointer"
+              className="px-4 py-2 rounded-xl text-[12.5px] font-medium text-[#DC2626] cursor-pointer whitespace-nowrap"
               style={{ border: "1px solid #FECACA", background: "#FEF2F2" }}>
               Sign out
             </SubmitButton>

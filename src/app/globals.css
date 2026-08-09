@@ -37,3 +37,15 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: #2563eb; }
 
 ::selection { background: rgba(37,99,235,0.12); color: #1d4ed8; }
+
+/* iOS Safari auto-zooms the whole page in when a focused form control renders
+   below 16px, then leaves the page zoomed in until the user manually zooms back
+   out — this is what "the site zooms in/out on its own" on mobile actually is.
+   Forcing every control to at least 16px on phone-width screens removes the
+   trigger entirely, without disabling the user's own ability to pinch-zoom
+   (unlike a maximum-scale/user-scalable viewport lock, which breaks accessibility). */
+@media (max-width: 767px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
