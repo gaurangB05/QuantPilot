@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { siteConfig } from "@/lib/config";
+import { createClient } from "@/lib/supabase/client";
 
 function LogoMark() {
   return (
@@ -21,12 +22,25 @@ function LogoMark() {
 export default function Navbar({ showAuthLinks = true }: { showAuthLinks?: boolean }) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // null = not yet known (avoids flashing "Log in" for a moment before we find out
+  // the visitor is actually signed in). Pages that already opt out entirely
+  // (dashboard, welcome — showAuthLinks={false}) skip this check altogether.
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    if (!showAuthLinks) return;
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => setLoggedIn(!!data.user));
+  }, [showAuthLinks]);
+
+  const showLoggedOutLinks = showAuthLinks && loggedIn === false;
+  const showLoggedInLink = showAuthLinks && loggedIn === true;
 
   return (
     <header
@@ -58,7 +72,7 @@ export default function Navbar({ showAuthLinks = true }: { showAuthLinks?: boole
         </div>
 
         {/* Desktop CTAs */}
-        {showAuthLinks && (
+        {showLoggedOutLinks && (
           <div className="hidden md:flex items-center gap-3">
             <a href="/login"
               className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-lg hover:bg-[#F8FAFC] transition-all duration-150">
@@ -75,6 +89,18 @@ export default function Navbar({ showAuthLinks = true }: { showAuthLinks?: boole
               onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "linear-gradient(135deg, #2563EB, #60A5FA)"; }}
             >
               Get Early Access
+            </a>
+          </div>
+        )}
+        {showLoggedInLink && (
+          <div className="hidden md:flex items-center gap-3">
+            <a href="/dashboard"
+              className="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-all duration-150"
+              style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)", boxShadow: "0 1px 6px rgba(37,99,235,0.28)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "linear-gradient(135deg, #1D4ED8, #2563EB)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "linear-gradient(135deg, #2563EB, #60A5FA)"; }}
+            >
+              Dashboard →
             </a>
           </div>
         )}
@@ -105,7 +131,7 @@ export default function Navbar({ showAuthLinks = true }: { showAuthLinks?: boole
                   {link.label}
                 </a>
               ))}
-              {showAuthLinks && (
+              {showLoggedOutLinks && (
                 <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-[#e5e7eb]">
                   <a href="/login" onClick={() => setMobileOpen(false)}
                     className="px-4 py-3 text-sm font-medium text-[#374151] hover:text-[#111827] rounded-xl hover:bg-[#F8FAFC] transition-colors text-center">
@@ -119,6 +145,15 @@ export default function Navbar({ showAuthLinks = true }: { showAuthLinks?: boole
                     className="px-4 py-3 text-sm font-semibold text-white rounded-xl text-center"
                     style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)" }}>
                     Get Early Access
+                  </a>
+                </div>
+              )}
+              {showLoggedInLink && (
+                <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-[#e5e7eb]">
+                  <a href="/dashboard" onClick={() => setMobileOpen(false)}
+                    className="px-4 py-3 text-sm font-semibold text-white rounded-xl text-center"
+                    style={{ background: "linear-gradient(135deg, #2563EB, #60A5FA)" }}>
+                    Dashboard →
                   </a>
                 </div>
               )}
