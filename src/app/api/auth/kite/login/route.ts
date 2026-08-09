@@ -11,8 +11,11 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // This route is only ever reached via a full browser navigation (window.location
+  // or a server-action redirect), never fetch() — so a JSON body here would just
+  // render as literal text on screen instead of taking the user anywhere useful.
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.redirect(`${origin}/login`);
   }
 
   const { data: tokenRow } = await supabase

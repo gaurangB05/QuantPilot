@@ -111,7 +111,7 @@ export default function ConnectZerodhaModal() {
               {stage === "credentials" && (
                 <form onSubmit={submitCredentials} className="flex flex-col gap-4">
                   <p className="text-[13px] text-[#6B7280] leading-relaxed">
-                    We'll automatically set up a personal API connection for your account. You'll then log in
+                    We&apos;ll automatically set up a personal API connection for your account. You&apos;ll then log in
                     directly with Zerodha on their site — your password and TOTP never touch our servers.
                   </p>
                   <div className="flex flex-col gap-1.5">

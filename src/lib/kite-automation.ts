@@ -17,10 +17,6 @@ async function withDiagnostics<T>(page: Page, step: string, fn: () => Promise<T>
   }
 }
 
-async function findInputNearText(page: Page, text: string) {
-  return page.locator(`xpath=//*[contains(normalize-space(text()), "${text}")]/following::input[1]`).first();
-}
-
 const ERROR_TEXT_SELECTOR =
   '.errorlist, .error, .alert, [class*="error"], [class*="Error"], [role="alert"]';
 

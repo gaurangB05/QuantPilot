@@ -34,18 +34,23 @@ async function createKiteAppWithDeadline(
 // creates the Personal Kite Connect app for this user. Never touches the user's
 // real Zerodha password/TOTP — those are entered directly on kite.zerodha.com
 // right after this, via the browser redirect to /api/auth/kite/login.
+// The whole body is inside one try/catch — including auth and body parsing, not
+// just the automation call — so ANY unexpected exception here (a transient
+// Supabase error, a cookie parse failure, anything) still returns JSON instead of
+// escaping to Next.js's own unhandled-error HTML page, which a fetch() caller
+// can't parse either.
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const body = (await request.json().catch(() => null)) as { zerodhaClientId?: string } | null;
-  const zerodhaClientId = body?.zerodhaClientId?.trim().toUpperCase();
-  if (!zerodhaClientId || !/^[A-Z]{2}[0-9A-Z]{4}$/.test(zerodhaClientId)) {
-    return NextResponse.json({ error: "Invalid Zerodha Client ID." }, { status: 400 });
-  }
-
   try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const body = (await request.json().catch(() => null)) as { zerodhaClientId?: string } | null;
+    const zerodhaClientId = body?.zerodhaClientId?.trim().toUpperCase();
+    if (!zerodhaClientId || !/^[A-Z]{2}[0-9A-Z]{4}$/.test(zerodhaClientId)) {
+      return NextResponse.json({ error: "Invalid Zerodha Client ID." }, { status: 400 });
+    }
+
     const { apiKey, apiSecret } = await createKiteAppWithDeadline({
       zerodhaClientId,
       appName: `QuantPilot-${user.id.slice(0, 8)}`,
