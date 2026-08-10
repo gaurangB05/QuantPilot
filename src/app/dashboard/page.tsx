@@ -16,6 +16,7 @@ import Navbar from "@/components/Navbar";
 import SubmitButton, { PendingOverlay } from "@/components/SubmitButton";
 import ChatWidget from "@/components/ChatWidget";
 import ConnectZerodhaModal from "@/components/ConnectZerodhaModal";
+import { HoldingsAllocationChart, PnLBreakdownChart, MarginMeter } from "@/components/DashboardCharts";
 
 // ─── Server actions ────────────────────────────────────────────────────────────
 
@@ -142,6 +143,20 @@ function Badge({ label, color }: { label: string; color: "blue" | "green" | "red
   return (
     <span className="px-2 py-0.5 rounded-md text-[11px] font-medium"
       style={{ background: c.bg, color: c.text }}>{label}</span>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2.5 px-5 py-10">
+      <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#F3F4F6" }}>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="#9CA3AF" strokeWidth="1.3" />
+          <path d="M2 6.5h12" stroke="#9CA3AF" strokeWidth="1.3" />
+        </svg>
+      </div>
+      <p className="text-[13px] text-[#9CA3AF] text-center">{text}</p>
+    </div>
   );
 }
 
@@ -341,22 +356,30 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, err
             key: "overview",
             keywords: ["portfolio", "pnl", "overview", "balance", "margin", "summary"],
             node: (
-              <div key="overview" className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                {stats.map((s) => (
-                  <div key={s.label} className="p-5 rounded-2xl"
-                    style={{ background: "#F8FAFC", border: "1px solid #E5E7EB" }}>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF] mb-2">{s.label}</p>
-                    <p className="text-[1.4rem] font-bold text-[#111827] leading-none">{s.value}</p>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <p className="text-[11.5px] text-[#9CA3AF]">{s.sub}</p>
-                      {s.pnl !== undefined && (
-                        <span className="text-[11px] font-semibold" style={{ color: s.pnl >= 0 ? "#16A34A" : "#DC2626" }}>
-                          {s.pnl >= 0 ? "+" : ""}{fmt(s.pnl)}
-                        </span>
-                      )}
+              <div key="overview" className="flex flex-col gap-4 mb-8">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  {stats.map((s) => (
+                    <div key={s.label}
+                      className="p-5 rounded-2xl transition-all duration-200 hover:shadow-[0_4px_20px_rgba(17,24,39,0.06)] hover:-translate-y-0.5"
+                      style={{ background: "#F8FAFC", border: "1px solid #E5E7EB" }}>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF] mb-2">{s.label}</p>
+                      <p className="text-[1.6rem] font-bold text-[#111827] leading-none tracking-tight">{s.value}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <p className="text-[11.5px] text-[#9CA3AF]">{s.sub}</p>
+                        {s.pnl !== undefined && (
+                          <span className="text-[11px] font-semibold" style={{ color: s.pnl >= 0 ? "#16A34A" : "#DC2626" }}>
+                            {s.pnl >= 0 ? "+" : ""}{fmt(s.pnl)}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <HoldingsAllocationChart holdings={data.holdings} />
+                  <PnLBreakdownChart holdings={data.holdings} />
+                  <MarginMeter equity={equity} />
+                </div>
               </div>
             ),
           },
@@ -372,7 +395,7 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, err
                 </div>
 
                 {netPositions.length === 0 ? (
-                  <p className="px-5 py-8 text-[13.5px] text-[#9CA3AF] text-center">No open positions today.</p>
+                  <EmptyState text="No open positions today." />
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-[13px]">
@@ -386,7 +409,8 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, err
                       <tbody>
                         {netPositions.map((p, i) => (
                           <tr key={`${p.tradingsymbol}-${i}`}
-                            style={{ borderBottom: "1px solid #F9FAFB", background: i % 2 === 0 ? "white" : "#FAFBFF" }}>
+                            className={`${i % 2 === 0 ? "bg-white" : "bg-[#FAFBFF]"} hover:bg-[#F1F5F9] transition-colors duration-150`}
+                            style={{ borderBottom: "1px solid #F9FAFB" }}>
                             <td className="px-5 py-3.5 font-semibold text-[#111827]">{p.tradingsymbol}</td>
                             <td className="px-5 py-3.5"><Badge label={p.product} color="blue" /></td>
                             <td className="px-5 py-3.5 text-[#374151]">
@@ -416,7 +440,7 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, err
                 </div>
 
                 {data.holdings.length === 0 ? (
-                  <p className="px-5 py-8 text-[13.5px] text-[#9CA3AF] text-center">No holdings in your demat account.</p>
+                  <EmptyState text="No holdings in your demat account." />
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-[13px]">
@@ -430,7 +454,8 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, err
                       <tbody>
                         {data.holdings.map((h, i) => (
                           <tr key={h.tradingsymbol}
-                            style={{ borderBottom: "1px solid #F9FAFB", background: i % 2 === 0 ? "white" : "#FAFBFF" }}>
+                            className={`${i % 2 === 0 ? "bg-white" : "bg-[#FAFBFF]"} hover:bg-[#F1F5F9] transition-colors duration-150`}
+                            style={{ borderBottom: "1px solid #F9FAFB" }}>
                             <td className="px-5 py-3.5 font-semibold text-[#111827]">{h.tradingsymbol}</td>
                             <td className="px-5 py-3.5 text-[#374151]">{h.quantity}</td>
                             <td className="px-5 py-3.5 text-[#374151]">{fmt(h.average_price)}</td>
@@ -462,7 +487,7 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, err
                 </div>
 
                 {data.orders.length === 0 ? (
-                  <p className="px-5 py-8 text-[13.5px] text-[#9CA3AF] text-center">No orders placed today.</p>
+                  <EmptyState text="No orders placed today." />
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-[13px]">
@@ -476,7 +501,8 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, err
                       <tbody>
                         {data.orders.map((o, i) => (
                           <tr key={o.order_id}
-                            style={{ borderBottom: "1px solid #F9FAFB", background: i % 2 === 0 ? "white" : "#FAFBFF" }}>
+                            className={`${i % 2 === 0 ? "bg-white" : "bg-[#FAFBFF]"} hover:bg-[#F1F5F9] transition-colors duration-150`}
+                            style={{ borderBottom: "1px solid #F9FAFB" }}>
                             <td className="px-5 py-3.5 font-semibold text-[#111827]">{o.tradingsymbol}</td>
                             <td className="px-5 py-3.5">
                               <Badge label={o.transaction_type} color={o.transaction_type === "BUY" ? "green" : "red"} />
@@ -509,7 +535,7 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, err
                 </div>
 
                 {data.trades.length === 0 ? (
-                  <p className="px-5 py-8 text-[13.5px] text-[#9CA3AF] text-center">No trades executed today.</p>
+                  <EmptyState text="No trades executed today." />
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-[13px]">
@@ -523,7 +549,8 @@ function PortfolioView({ data, kiteUserName, kiteUserId, fetchedAt, widgets, err
                       <tbody>
                         {data.trades.map((t, i) => (
                           <tr key={t.trade_id}
-                            style={{ borderBottom: "1px solid #F9FAFB", background: i % 2 === 0 ? "white" : "#FAFBFF" }}>
+                            className={`${i % 2 === 0 ? "bg-white" : "bg-[#FAFBFF]"} hover:bg-[#F1F5F9] transition-colors duration-150`}
+                            style={{ borderBottom: "1px solid #F9FAFB" }}>
                             <td className="px-5 py-3.5 font-semibold text-[#111827]">{t.tradingsymbol}</td>
                             <td className="px-5 py-3.5">
                               <Badge label={t.transaction_type} color={t.transaction_type === "BUY" ? "green" : "red"} />
